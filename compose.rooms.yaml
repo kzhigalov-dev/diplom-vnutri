@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: vnutri_rooms
+      POSTGRES_USER: vnutri
+      POSTGRES_PASSWORD: ${ROOMS_DB_PASSWORD:?Set ROOMS_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:${ROOMS_DB_PORT:-55432}:5432"
+    volumes:
+      - rooms-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "vnutri", "-d", "vnutri_rooms"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+volumes:
+  rooms-data:
