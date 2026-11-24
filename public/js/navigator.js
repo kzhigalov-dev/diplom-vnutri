@@ -4,13 +4,15 @@ import {loadMapClosures} from './map-preview.js?v=20261112-floor-fit';
 import {searchRoom} from './room-search.js';
 import {searchServices} from './service-search.js';
 import {parseWorkSearch} from './work-search.js?v=20261113-navigation';
-import {createNavigatorPlan} from './navigator-plan.js?v=20261112-floor-fit';
+import {createNavigatorPlan} from './navigator-plan.js?v=20261124-atlas-polish';
 import {accessSources,floorSource,secondFloorDetour,fourthFloorSign} from './campus-evidence.js';
 import {createRouteLink,createServiceLink,createSpaceLink,createStartLink,readNavigationLink,writeRoutePreferences} from './navigation-link.js?v=20261112-guide';
 import {routeFloorInstruction} from './route-preview.js?v=20261112-visit';
 import {pilotRooms,pilotEquipment,pilotRoomById,pilotRoomBySpace,filterPilotRooms} from './pilot-spaces.js?v=20261113-navigation';
 import {escapeHTML as e} from './escape-html.js';
-import {initContactForm} from './contact-form.js?v=20261113-navigation';
+import {initContactForm} from './contact-form.js?v=20261114-pan';
+import {catalogPhotoReference,catalogSummary,catalogTitle,fetchRoomCatalog} from './room-catalog.js?v=20261123-room-realism';
+import {createRoomEditor} from './room-editor.js';
 const $=id=>document.getElementById(id),app=$('nav-app');
 const icon=name=>`<svg class="nav-icon" aria-hidden="true"><use href="#nav-i-${name}"/></svg>`;
 const defaultOrigin='start-1';
@@ -19,6 +21,10 @@ let stepFree=routeParams.get('access')==='step-free';
 let mapRouting,routeFeedback='',pendingRoute=false;
 function routePreferences(){return {stepFree,mapPreview:previewRequested};}
 let graphicsAvailable=false,routeStairFocus=null,stairReturnStep=-1,stairTrigger=null;
+let interiorOpen=false;
+let allFloorsVisible=false;
+const catalogRooms=new Map(),catalogBySpace=new Map();
+let catalogSelection=null,refreshingRoom=null,catalogRefreshTimer;
 let services=null,servicesFailed=false;
 let campus,scene,directory,selected=null,directoryEntry=null,origin=defaultOrigin,mode='all',route=null,routeRevision=0,routeStep=-1,toastTimer,returnFocus=null,viewLevel=0;
 let seekingPreview=false,visible=new Set();
@@ -26,6 +32,7 @@ const storage={getItem:key=>localStorage.getItem(key)};
 $('nav-team-size').append(...Array.from({length:Math.max(...pilotRooms.map(room=>room.seatCount))},(_,i)=>new Option(String(i+1),String(i+1))));
 $('nav-equipment').append(new Option('Любое',''),...pilotEquipment.map(item=>new Option(item,item)));
 function toast(message){clearTimeout(toastTimer);$('nav-toast').textContent=message;$('nav-toast').hidden=false;toastTimer=setTimeout(()=>$('nav-toast').hidden=true,5000);return toastTimer; }
+const editRoom=createRoomEditor($('nav-room-editor'),applyCatalogRoom,()=>toast('Оснащение сохранено.'));
 function categoryName(category){return {computer:'С компьютером',quiet:'Тихая работа',team:'Для команды'}[category]||'Помещение модели'}
 function filter(){
  const query=$('nav-query').value;
@@ -38,11 +45,18 @@ function filter(){
 }
 function current(){return campus?.entries.get(selected)||null}
 function pilot(){return pilotRoomBySpace(selected)}
+function catalogRoomForSpace(id){return catalogRooms.get(catalogBySpace.get(id))}
+function catalogRoom(){return catalogSelection?catalogRooms.get(catalogSelection):catalogRoomForSpace(selected)}
 const mobile=matchMedia('(max-width:700px)');
+const contextPanels=[$('nav-detail'),$('nav-route')];
+const contextObserver=new ResizeObserver(()=>{
+ const height=contextPanels.find(panel=>!panel.hidden)?.offsetHeight||0;
+ app.style.setProperty('--nav-context-height',`${height}px`);
+});
+contextPanels.forEach(panel=>contextObserver.observe(panel,{box:'border-box'}));
 function syncSidebar(){
  const open=app.classList.contains('is-list-open');
  $('nav-sidebar').inert=!open;
- $('nav-list-toggle').setAttribute('aria-expanded',String(open));
  $('nav-query').setAttribute('aria-controls','nav-sidebar');
 }
 function openList(){if(!app.classList.contains('is-list-open'))returnFocus=document.activeElement;app.classList.add('is-list-open');syncSidebar()}
@@ -57,14 +71,15 @@ function closeSearch(){
 mobile.addEventListener('change',syncSidebar);syncSidebar();
 function setLevel(number,animate=true,stairIndex=null){
  number=Number(number)||0;
+ if(number||route)allFloorsVisible=false;
+ interiorOpen=false;
+ clearTimeout(catalogRefreshTimer);
  viewLevel=number;
  routeStairFocus=stairIndex;
- scene?.setOverviewMode?.(route?'spread':'building');
- app.classList.toggle('is-open-model',number>0);
- $('nav-stage-title').innerHTML=number?`${number} этаж`:'Вознесенский, <br>44–46';
- $('nav-open-model').innerHTML=number?'Здание целиком':`Открыть первый этаж ${icon('chevron')}`;
- if(!number){$('nav-projection').setAttribute('aria-pressed','false');$('nav-projection').querySelector('span').textContent='2D';$('nav-rotate').disabled=false;}
- scene?.setView(number,{animate,stairIndex});
+ const allFloors=!route&&!number&&allFloorsVisible&&graphicsAvailable;
+ if(!number)setProjectionControls(false);
+ $('nav-projection').disabled=stairIndex!==null;
+ scene?.setView(number,{animate,stairIndex,overview:route?'spread':allFloors?'floors':'building'});
  const source=$('nav-floor-source');
  source.hidden=stairIndex!==null;
  const shownFloor=number||(!graphicsAvailable&&scene?(route?.from.floor??1):0);
@@ -87,26 +102,37 @@ function setLevel(number,animate=true,stairIndex=null){
  overviewButton.title=overviewLabel;
  overviewButton.querySelector('use').setAttribute('href',graphicsAvailable?(route?'#nav-i-route':'#nav-i-building'):'#nav-i-plan');
  overviewButton.querySelector('span').textContent=graphicsAvailable?(route?'Маршрут':'Здание'):'Старт';
- document.querySelectorAll('[data-level]').forEach(button=>button.setAttribute('aria-pressed',String(stairIndex===null&&Number(button.dataset.level)===number)));
+ document.querySelectorAll('[data-level]').forEach(button=>button.setAttribute('aria-pressed',String(!allFloors&&stairIndex===null&&Number(button.dataset.level)===number)));
+ const allFloorsButton=$('nav-all-floors');
+ allFloorsButton.hidden=!graphicsAvailable||Boolean(route);
+ allFloorsButton.setAttribute('aria-pressed',String(allFloors));
  if(route){
   setRouteStep(stairIndex??(route.floors[routeStep]===number?routeStep:route.floors.indexOf(number)));
   updateStairPanel();
  }
 }
 function switchToPlan(){
+ const activeStep=routeStairFocus??routeStep;
+ const fallbackFloor=route&&activeStep>=0?route.floors[activeStep]:viewLevel;
  graphicsAvailable=false;
+ allFloorsVisible=false;
+ $('nav-all-floors').hidden=true;
  routeStairFocus=null;
+ interiorOpen=false;
  scene?.dispose();
  scene=null;
+ $('campus-map').setAttribute('aria-busy','false');
  const loading=$('nav-loading');
  try{
   scene=createNavigatorPlan({container:$('campus-map'),campus,onSelect:select});
+  scene.setRoomCatalog(catalogRooms.values());
   app.classList.add('has-plan-fallback');
-  $('campus-map').setAttribute('aria-label','Плоский план корпуса. Кабинеты также доступны в списке.');
+  $('campus-map').setAttribute('aria-label','Плоский план корпуса. Стрелки перемещают план, плюс и минус меняют масштаб, Home возвращает исходный вид. Кабинеты доступны в списке.');
   scene.setVisible(visible);
   scene.select(selected);
   scene.setRoute(route);
-  setLevel(viewLevel,false);
+  setLevel(fallbackFloor,false);
+  if(route&&activeStep>=0)setRouteStep(activeStep);
   loading.hidden=true;
  }catch{
   loading.hidden=false;
@@ -114,6 +140,7 @@ function switchToPlan(){
   loading.textContent='Карта недоступна. Поиск и текстовые шаги работают.';
   openList();
  }
+ renderDetail();
  renderRoute();
 }
 function setRouteStep(index){
@@ -130,6 +157,9 @@ function setRouteStep(index){
  const position=guide.querySelector('[data-guide-position]');
  const label=`${index<0?'Первый шаг':`Шаг ${index+1} из ${count}`} · ${route.floors[displayed]}-й этаж`;
  if(position.textContent!==label)position.textContent=label;
+ guide.querySelectorAll('.nav-guide-track span').forEach((segment,step)=>{
+  segment.classList.toggle('is-reached',step<=index);
+ });
  instruction.textContent=routeFloorInstruction(route,displayed);
  const back=guide.querySelector('[data-route-prev]');
  const next=guide.querySelector('[data-route-next]');
@@ -149,8 +179,13 @@ function showRouteStep(index){
  setRouteStep(index);
 }
 function showMapFloor(number){
- if(!route)clearSelection();
+ const fromFloorLabel=document.activeElement?.classList.contains('nav-level-label');
+ if(!route){
+  clearSelection();
+  allFloorsVisible=false;
+ }
  setLevel(number);
+ if(fromFloorLabel)document.querySelector(`[data-level="${Number(number)}"]`)?.focus({preventScroll:true});
 }
 function clearRoute(){
  routeRevision++;
@@ -167,8 +202,11 @@ function clearRoute(){
  routeStep=-1;
 }
 function clearSelection(message){
+ interiorOpen=false;
+ clearTimeout(catalogRefreshTimer);
  selected=null;
  directoryEntry=null;
+ catalogSelection=null;
  clearRoute();
  scene?.select(null,{focus:false});
  $('nav-detail').hidden=true;
@@ -181,7 +219,12 @@ function clearSelection(message){
  if(url.href!==location.href)history.replaceState(null,'',url);
  if(message)toast(message);
 }
-function closePassport(){clearSelection();setLevel(viewLevel);document.querySelector('.nav-levels [aria-pressed=true]')?.focus();}
+function closePassport(){
+ clearSelection();
+ setLevel(viewLevel);
+ const floorButton=document.querySelector('.nav-levels [aria-pressed=true]');
+ (floorButton?.getClientRects().length?floorButton:$('campus-map')).focus({preventScroll:true});
+}
 function returnToRoom(){
  clearRoute();
  const entry=current();
@@ -203,7 +246,7 @@ function renderServices(query,filters){
  section.hidden=!catalogMode&&!matches.length;
  if(section.hidden){section.replaceChildren();return 0;}
  if(!services){
-  section.innerHTML=`<p class="nav-empty">${servicesFailed?'Не удалось загрузить услуги. Обновите страницу.':'Загружаем услуги…'}</p>`;
+  section.innerHTML=`<p class="nav-empty${servicesFailed?'':' campus-loading'}" role="status">${servicesFailed?'Не удалось загрузить услуги. Обновите страницу.':'Загружаем услуги…'}</p>`;
   return 0;
  }
  section.innerHTML=matches.length?matches.map(service=>{
@@ -211,8 +254,8 @@ function renderServices(query,filters){
   const space=campus?.entries.get(placement?.spaceId);
   const destination=space?.point&&space.directoryRoom?.number===service.roomNumber?space:null;
   const sourceLink=`<a href="${e(service.sourceUrl)}" target="_blank" rel="noopener">Источник СПбГУПТД ↗</a>`;
-  const actionLink=service.actionUrl&&service.actionLabel?`<a class="nav-btn" href="${e(service.actionUrl)}" target="_blank" rel="noopener">${e(service.actionLabel)} ↗</a>`:'';
-  const routeButton=destination?`<button type="button" class="nav-btn nav-btn-primary" data-service-destination="${e(destination.id)}">Учебный маршрут</button>`:'';
+  const actionLink=service.actionUrl&&service.actionLabel?`<a class="button nav-control" href="${e(service.actionUrl)}" target="_blank" rel="noopener">${e(service.actionLabel)} ↗</a>`:'';
+  const routeButton=destination?`<button type="button" class="button button-primary nav-control" data-service-destination="${e(destination.id)}">Учебный маршрут</button>`:'';
   return `<article class="nav-service" data-service-id="${e(service.id)}">
    <h3>${e(service.title)}</h3>
    <p>${e(service.description)}</p>
@@ -239,7 +282,7 @@ function renderResults(){
   if(room ? !pilotSet.has(space.id) : mode!=='all'||filters.work||filters.category!=='all')return [];
   const rank=searchRoom(filters.request?'':query,{
    numbers:[space.label,space.modelIndex],
-   text:[space.displayName,room?.name,...(room?.equipment??[]),room?null:`помещение ${space.floor} этаж`],
+   text:[space.displayName,room?.name,...(room?.equipment??[]),catalogTitle(catalogRoomForSpace(space.id)),room?null:`помещение ${space.floor} этаж`],
   });
   return Number.isFinite(rank)?[{space,rank}]:[];
  }).sort((a,b)=>a.rank-b.rank
@@ -249,22 +292,37 @@ function renderResults(){
  visible=new Set(result.map(s=>s.id));if(selected&&!visible.has(selected))clearSelection('Выбор снят: помещение скрыто фильтром.');
  scene?.setVisible(visible);
  const serviceCount=renderServices(query,filters);
- $('nav-results').innerHTML=result.length?result.map(s=>{const r=pilotRoomBySpace(s.id);return `<button type="button" class="nav-result" data-select="${e(s.id)}" aria-pressed="${s.id===selected}"><span class="nav-result-code">${e(s.label)}</span><span class="nav-result-main"><strong>${e(s.displayName||r?.name||'Помещение модели')}</strong><small>${s.floor}-й этаж${s.directoryRoom&&!s.directoryRoom.documented_floor?' макета':''}${r?' · '+categoryName(r.category):''}</small>${r?`<small>До ${r.seatCount} мест по модели</small>`:''}</span></button>`}).join(''):serviceCount?'':`<p class="nav-empty">${mode==='work'?'Нет учебных мест, подходящих по этим условиям. Измените требования.':'Ничего не найдено. Измени запрос или сбрось фильтры.'}</p>`;
+ const searchCatalog=mode==='all'&&!filters.work&&filters.category==='all'&&query.length>1;
+ const unplaced=searchCatalog?[...catalogRooms.values()].flatMap(room=>{
+  if(room.spaceId&&campus?.entries.has(room.spaceId))return [];
+  const alternate=room.number.replace(/^(\d{3})([А-Я])$/u,'$1-$2');
+  const rank=searchRoom(query,{numbers:[room.number,alternate],text:[catalogTitle(room)]});
+  return Number.isFinite(rank)?[{room,rank}]:[];
+ }).sort((a,b)=>a.rank-b.rank).map(({room})=>room):[];
+ if(catalogSelection&&!unplaced.some(room=>room.id===catalogSelection))clearSelection();
+ $('nav-results').innerHTML=result.length?result.map(s=>{
+  const r=pilotRoomBySpace(s.id),room=catalogRoomForSpace(s.id);
+  const name=room&&mode==='all'&&!filters.work?catalogTitle(room):s.displayName||r?.name||'Помещение модели';
+  return `<button type="button" class="nav-result" data-select="${e(s.id)}" aria-pressed="${s.id===selected}"><span class="nav-result-code">${e(s.label)}</span><span class="nav-result-main"><strong>${e(name)}</strong><small>${s.floor}-й этаж${s.directoryRoom&&!s.directoryRoom.documented_floor?' макета':''}${r&&!room?' · '+categoryName(r.category):''}</small>${r&&(!room||filters.work)?`<small>До ${r.seatCount} мест по модели</small>`:''}</span></button>`
+ }).join(''):serviceCount||unplaced.length?'':`<p class="nav-empty">${mode==='work'?'Нет учебных мест, подходящих по этим условиям. Измените требования.':'Аудитории не найдены. Измените запрос или сбросьте фильтры.'}</p>`;
  const placedIds=new Set(campus?[...campus.entries.values()].map(space=>space.directoryRoom?.id):[]);
  const real=directory&&mode==='all'&&!filters.work&&filters.category==='all'&&query.length>1
   ?directory.rooms.flatMap(room=>{
-   if(placedIds.has(room.id))return [];
+   if(placedIds.has(room.id)||unplaced.some(candidate=>candidate.number===room.number))return [];
    const rank=searchRoom(query,{numbers:[room.number],text:[room.label]});
    return Number.isFinite(rank)?[{room,rank}]:[];
   }).sort((a,b)=>a.rank-b.rank).map(({room})=>room)
   :[];
  if(directoryEntry&&!real.some(r=>r.number===directoryEntry.number))clearSelection();
- $('nav-directory-results').innerHTML=real.length?`<p class="nav-directory-heading">Справочник · без привязки к схеме</p>`+real.map(r=>`<button type="button" class="nav-result" data-directory="${e(r.number)}"><span class="nav-result-code">${e(r.number)}</span><span class="nav-result-main"><strong>${e(r.label)}</strong><small>Положение не подтверждено</small></span></button>`).join(''):'';
+ const listedRooms=unplaced.map(room=>`<button type="button" class="nav-result" data-catalog="${e(room.id)}" aria-pressed="${room.id===catalogSelection}"><span class="nav-result-code">${e(room.number)}</span><span class="nav-result-main"><strong>${e(catalogTitle(room))}</strong><small>Положение не подтверждено</small></span></button>`);
+ const listedDirectory=real.map(r=>`<button type="button" class="nav-result" data-directory="${e(r.number)}"><span class="nav-result-code">${e(r.number)}</span><span class="nav-result-main"><strong>${e(r.label)}</strong><small>Положение не подтверждено</small></span></button>`);
+ $('nav-directory-results').innerHTML=listedRooms.length||listedDirectory.length
+  ?`<p class="nav-directory-heading">Без привязки к схеме</p>`+listedRooms.join('')+listedDirectory.join(''):'';
  const isContact=mode==='contact',serviceMode=mode==='services';
- const serviceOnly=serviceMode||(serviceCount>0&&!result.length&&!real.length);
+ const serviceOnly=serviceMode||(serviceCount>0&&!result.length&&!real.length&&!unplaced.length);
  $('nav-result-count').textContent=serviceOnly
   ?`Услуг: ${serviceCount}`
-  :campus?`На схеме: ${result.length}${mode==='work'?` из ${pilotRooms.length}`:''}${serviceCount?` · Услуг: ${serviceCount}`:''}`:'Загружаем карту…';
+  :campus?`На схеме: ${result.length}${mode==='work'?` из ${pilotRooms.length}`:''}${unplaced.length?` · Без привязки: ${unplaced.length}`:''}${serviceCount?` · Услуг: ${serviceCount}`:''}`:'Загружаем карту…';
  $('nav-search-title').textContent={contact:'Обратная связь',work:'Место для работы',services:'Услуги'}[mode]||'Поиск по кампусу';
  $('nav-search-modes').hidden=isContact;
  for(const key of ['all','work','services'])$('nav-mode-'+key).setAttribute('aria-pressed',String(mode===key));
@@ -282,34 +340,132 @@ function renderResults(){
 function renderDetail(){
  const panel=$('nav-detail');
  if(route){panel.hidden=true;app.classList.add('has-context');return}
- const entry=current(),r=pilot();
- app.classList.toggle('has-context',Boolean(entry||r||directoryEntry));
- if(directoryEntry){const source=directory.sources[directoryEntry.source_ids[0]];panel.hidden=false;panel.innerHTML=`<button class="nav-close" data-close aria-label="Закрыть помещение">${icon('close')}</button><h2>${e(directoryEntry.number)}</h2><p class="nav-room-title">${e(directoryEntry.label)}</p><p>Номер из справочника. Современное положение на плане не подтверждено.</p><a class="nav-btn" href="${e(source.url)}" target="_blank" rel="noopener">Открыть источник</a><a class="nav-btn nav-btn-wide" href="./about.html">О точности макета</a>`;return;}
+ const entry=current(),room=catalogRoom(),r=room?null:pilot();
+ app.classList.toggle('has-context',Boolean(entry||r||room||directoryEntry));
+ if(catalogSelection&&room){
+  delete panel.dataset.space;
+  panel.hidden=false;
+  panel.innerHTML=`<button class="nav-close" data-close aria-label="Закрыть помещение">${icon('close')}</button>
+   <header class="nav-room-heading"><h2>${e(room.number)}</h2><p class="nav-room-title">${e(catalogTitle(room))}</p></header>
+   <p class="nav-note">Положение на плане не подтверждено.</p>
+   <p class="nav-note" data-catalog-summary role="status">${e(catalogSummary(room))}</p>
+   <div class="nav-actions nav-room-primary">${interiorButton()}${roomEditButton}</div>
+   ${catalogInteriorEvidence(room)}`;
+  return;
+ }
+ if(directoryEntry){
+  const source=directory.sources[directoryEntry.source_ids[0]];
+  delete panel.dataset.space;
+  panel.hidden=false;
+  panel.innerHTML=`<button class="nav-close" data-close aria-label="Закрыть помещение">${icon('close')}</button>
+   <header class="nav-room-heading"><h2>${e(directoryEntry.number)}</h2><p class="nav-room-title">${e(directoryEntry.label)}</p></header>
+   <p>Номер из справочника. Современное положение на плане не подтверждено.</p>
+   <a class="button nav-control" href="${e(source.url)}" target="_blank" rel="noopener">Открыть источник</a>
+   <a class="nav-text-btn" href="./about.html">О точности макета</a>`;
+  return;
+ }
  if(!entry&&!r){panel.hidden=true;return}panel.hidden=false;
  const sameSpace=panel.dataset.space===selected;
  const evidenceOpen=sameSpace&&panel.querySelector('.nav-evidence')?.open;
  const extrasOpen=sameSpace&&panel.querySelector('.nav-room-options')?.open;
  panel.dataset.space=selected||'';
- const title=entry?.displayName||r?.name||'Помещение модели',number=entry?.label||r?.number;
+ const title=room?catalogTitle(room):entry?.displayName||r?.name||'Помещение модели',number=entry?.label||r?.number;
  const panelGroup=entry&&campus.floors.get(entry.floor)?.source.sourceKind==='wayfinding-panel'&&/^\d{3}\s*[-–—]\s*\d{3}$/u.test(number);
- panel.innerHTML=`<button class="nav-close" data-close aria-label="Закрыть помещение">${icon('close')}</button><h2>${e(number)}</h2><p class="nav-room-title">${e(title)}</p>${panelGroup?'<p class="nav-note">Панель показывает эту группу целиком. Отдельные двери на схеме не различимы.</p>':''}<p class="nav-kind"><span class="nav-space-meta">${r?'Пилотное пространство':entry?.directoryRoom?'Кабинет в макете':'Помещение модели'} · ${r?.floor||entry.floor}-й этаж</span>${r?'<span class="nav-concept-note">Оборудование и размещение — концепция</span>':''}</p>${r?`<div class="nav-equipment">${r.equipment.map(x=>`<span>${e(x)}</span>`).join('')}</div>`:''}<div class="nav-actions nav-room-primary">
- <button type="button" class="nav-btn nav-btn-primary" data-route${entry?.point&&!pendingRoute?'':' disabled'}>${icon('route')}${pendingRoute?'Проверяем проходы…':routePreferences().stepFree?'Маршрут без лестниц':'Построить маршрут'}</button>
- ${entry?.point?'<button type="button" class="nav-text-btn" data-route-settings>Настройки маршрута</button>':''}
+ panel.innerHTML=`<button class="nav-close" data-close aria-label="Закрыть помещение">${icon('close')}</button>
+ <header class="nav-room-heading">
+  <h2>${e(number)}</h2>
+  <p class="nav-room-title">${e(title)}</p>
+  <p class="nav-room-floor">${r?.floor||entry.floor}-й этаж${r?' · Рабочая зона в макете':''}</p>
+ </header>
+ ${panelGroup?'<p class="nav-note">На плане показана группа аудиторий без отдельных дверей.</p>':''}
+ ${room?`<p class="nav-note" data-catalog-summary role="status">${e(catalogSummary(room))}</p>`:''}
+ <div class="nav-actions nav-room-primary">
+ <button type="button" class="button button-primary nav-control" data-route${entry?.point&&!pendingRoute?'':' disabled'}>${icon('route')}${pendingRoute?'Проверяем проходы…':routePreferences().stepFree?'Маршрут без лестниц':'Построить маршрут'}</button>
+ ${room||r?interiorButton():''}
+ ${room?roomEditButton:''}
  </div>
+ ${room?catalogInteriorEvidence(room):interiorOpen?'<p class="nav-room-model-note">Учебная модель интерьера</p>':''}
  ${routeFeedback?`<p id="nav-route-feedback" class="nav-field-error" role="status" tabindex="-1">${e(routeFeedback)}</p>${routePreferences().stepFree&&!mapRouting?.error?'<a class="nav-text-btn" href="./orientation.html#access">Доступность и контакты университета →</a>':''}`:''}
  <details class="nav-disclosure-group nav-room-options"${extrasOpen?' open':''}>
-  <summary>Действия с помещением</summary>
+  <summary>Об аудитории и действия</summary>
+  ${r?`<p class="nav-note">До ${r.seatCount} мест по учебной модели. Возможность работы здесь уточняйте в университете.</p>
+  <ul class="nav-equipment-list" aria-label="Оснащение по учебной модели">${r.equipment.map(item=>`<li>${e(item)}</li>`).join('')}</ul>`:''}
+  ${entry?.directoryRoom?`<details class="nav-evidence"${evidenceOpen?' open':''}><summary>${entry.directoryRoom.evidence_status==='conflicting'?'Источники расходятся':entry.directoryRoom.evidence_status==='historical'?'Сведения из архива':'Сведения и источник'}</summary>
+   <p>${e(roomEvidence(entry.directoryRoom))}</p>
+   <small>Индекс модели: ${e(entry.modelIndex)}</small>
+   <a href="${e(directory.sources[entry.directoryRoom.source_ids[0]].url)}" target="_blank" rel="noopener">Источник о кабинете</a>
+  </details>`:''}
+  <p class="nav-note">${room?'Номер помещения совпал с навигационной панелью этажа.':entry?.placement?'Расположение взято с панели этажа, назначение указано в справочнике.':r?'Оснащение показано для примера.':'Схема по источнику этажа. Современное назначение не установлено.'}</p>
   <div class="nav-secondary-actions">
+   ${entry?.point?'<button type="button" class="nav-text-btn" data-route-settings>Настройки маршрута</button>':''}
    ${entry?.point?'<button type="button" class="nav-text-btn" data-start>Начать отсюда</button>':''}
    ${entry?'<button type="button" class="nav-text-btn" data-share-room>Скопировать ссылку</button>':''}
    <button type="button" class="nav-text-btn" data-contact-room="${e(number)}">Сообщить об аудитории</button>
   </div>
- </details>
- ${r?`<p class="nav-note">До ${r.seatCount} мест по учебной модели.</p>`:''}${entry?.directoryRoom?`<div class="nav-placement-note"><strong>Номер по навигационной панели</strong><details class="nav-evidence"${evidenceOpen?' open':''}><summary>${entry.directoryRoom.evidence_status==='conflicting'?'Источники расходятся':entry.directoryRoom.evidence_status==='historical'?'По архиву · сведения и источник':'Сведения и источник'}</summary><p>${e(roomEvidence(entry.directoryRoom))}</p><small>Индекс модели: ${e(entry.modelIndex)}</small><a href="${e(directory.sources[entry.directoryRoom.source_ids[0]].url)}" target="_blank" rel="noopener">Источник о кабинете</a></details></div>`:''}<p class="nav-disclosure">${r?'Возможность работы в аудитории уточняйте в университете.':entry?.placement?'Номер и расположение — по панели; назначение — по справочнику.':'Схема по источнику этажа. Современное назначение не установлено.'}</p>`;
+ </details>`;
+}
+
+function interiorButton(){
+ return scene?.showInterior?`<button class="button nav-control" type="button" data-room-interior aria-pressed="${interiorOpen}">Интерьер</button>`:'';
+}
+
+const roomEditButton='<button class="nav-text-btn" type="button" data-room-edit>Изменить оснащение</button>';
+
+function catalogInteriorEvidence(room){
+ const photo=catalogPhotoReference(room);
+ const modelNote=photo?'Расстановка по опубликованным кадрам. Размеры приблизительные.':'Предварительная модель. Размеры и расстановка условны.';
+ const sourceLabel=photo?.computersAlongWalls?'Галерея класса':photo?.doubleChalkboard?'Видео мастер-класса':'Снимок лаборатории';
+ return `${interiorOpen?`<p class="nav-room-model-note">${modelNote}</p>`:''}
+ ${photo?`<p class="nav-note">${e(photo.evidence)} <a href="${e(photo.url)}" target="_blank" rel="noreferrer">${sourceLabel}</a></p>`:''}`;
+}
+
+function storeCatalogRoom(room){
+ catalogRooms.set(room.id,room);
+ if(room.spaceId)catalogBySpace.set(room.spaceId,room.id);
+}
+
+function applyCatalogRoom(room){
+ const before=catalogRoom();
+ storeCatalogRoom(room);
+ scene?.setRoomCatalog([room]);
+ if(room.id!==before?.id)return;
+ const summary=$('nav-detail').querySelector('[data-catalog-summary]');
+ const description=catalogSummary(room);
+ if(summary&&summary.textContent!==description)summary.textContent=description;
+ if(interiorOpen&&(room.computerCount!==before.computerCount||room.capacity!==before.capacity||room.purposes.join()!==before.purposes.join())){
+  scene?.showInterior(selected,room);
+ }
+}
+
+async function refreshCatalogRoom(){
+ const before=catalogRoom();
+ if(!before||!interiorOpen||document.hidden||refreshingRoom===before.id)return;
+ refreshingRoom=before.id;
+ try{
+  const room=await fetchRoomCatalog(before.id);
+  if(room?.id===before.id&&catalogRoom()===before&&interiorOpen)applyCatalogRoom(room);
+ }catch{
+  // Keep the last model available during a temporary database outage.
+ }finally{
+  if(refreshingRoom===before.id)refreshingRoom=null;
+  clearTimeout(catalogRefreshTimer);
+  if(interiorOpen&&catalogRoom()&&!document.hidden)catalogRefreshTimer=setTimeout(refreshCatalogRoom,5000);
+ }
 }
 
 function updateAll(){renderResults();renderDetail();}
-function select(id,{keepUrl=false}={}){if(!visible.has(id)){toast('Помещение скрыто фильтром. Сначала сбрось фильтры.');return}clearRoute();selected=id;directoryEntry=null;const entry=campus?.entries.get(id);if(entry)setLevel(entry.floor);scene?.select(id,{focus:true});closeList();renderResults();renderDetail();if(!keepUrl){const url=new URL(location.href);url.search='';writeRoutePreferences(url,routePreferences());if(origin!==defaultOrigin)url.searchParams.set('from',origin);url.hash=`space=${encodeURIComponent(id)}`;history.replaceState(null,'',url);}$('nav-detail').querySelector('h2')?.setAttribute('tabindex','-1');$('nav-detail').querySelector('h2')?.focus({preventScroll:true});}
+function select(id,{keepUrl=false}={}){if(!visible.has(id)){toast('Помещение скрыто фильтром. Сбросьте фильтры, чтобы открыть его.');return}clearRoute();selected=id;directoryEntry=null;catalogSelection=null;const entry=campus?.entries.get(id);if(entry)setLevel(entry.floor);scene?.select(id,{focus:true});closeList();renderResults();renderDetail();if(!keepUrl){const url=new URL(location.href);url.search='';writeRoutePreferences(url,routePreferences());if(origin!==defaultOrigin)url.searchParams.set('from',origin);url.hash=`space=${encodeURIComponent(id)}`;history.replaceState(null,'',url);}$('nav-detail').querySelector('h2')?.setAttribute('tabindex','-1');$('nav-detail').querySelector('h2')?.focus({preventScroll:true});}
+function selectCatalog(id){
+ if(!catalogRooms.has(id))return;
+ clearSelection();
+ catalogSelection=id;
+ closeList();
+ renderResults();
+ renderDetail();
+ const title=$('nav-detail').querySelector('h2');
+ title?.setAttribute('tabindex','-1');
+ title?.focus({preventScroll:true});
+}
 function selectDirectory(number){clearSelection();directoryEntry=directory?.rooms.find(r=>r.number===number);closeList();renderDetail();const title=$('nav-detail').querySelector('h2');title?.setAttribute('tabindex','-1');title?.focus({preventScroll:true});}
 async function displayRoute(){
  const target=current();
@@ -403,7 +559,7 @@ function renderRoute(){
   return `<li>${floorStep}${stairButton}</li>`;
  }).join('');
  const journey=graphicsAvailable?`<div class="nav-journey">
-  <button type="button" class="nav-btn nav-btn-wide" data-route-play aria-pressed="false">${icon('play')}Показать движение</button>
+  <button type="button" class="button nav-control nav-btn-wide" data-route-play aria-pressed="false">${icon('play')}Показать движение</button>
   <label for="nav-route-progress">Просмотр маршрута <output id="nav-route-position" aria-live="off">Начало · ${route.from.floor}-й этаж</output></label>
   <input id="nav-route-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="Положение на учебном маршруте">
   <p>Демонстрация движения по схеме</p>
@@ -414,26 +570,29 @@ function renderRoute(){
   <p class="nav-route-origin-label">Откуда: ${e(route.from.label)}</p>
   ${previewRequested||stepFree?'<p class="nav-kind">'+(previewRequested?'Локальный предпросмотр карты':'Без лестниц')+'</p>':''}
   <section class="nav-route-guide" aria-label="Шаги маршрута">
+   <div class="nav-guide-track" aria-hidden="true">${route.floors.map(()=>'<span></span>').join('')}</div>
    <div class="nav-route-guide-current" aria-live="polite" aria-atomic="true"><strong data-guide-position></strong><p data-guide-instruction></p></div>
    <div class="nav-route-guide-actions">
-    <button type="button" class="nav-btn" data-route-prev>Предыдущий шаг</button>
-    <button type="button" class="nav-btn nav-btn-primary" data-route-next>Следующий шаг</button>
+    <button type="button" class="button nav-control" data-route-prev>Предыдущий шаг</button>
+    <button type="button" class="button button-primary nav-control" data-route-next>Следующий шаг</button>
    </div>
    <button type="button" class="nav-text-btn nav-guide-stair" data-guide-stair hidden></button>
   </section>
-  ${detour?`<p class="nav-route-evidence">На панели 2-го этажа указан обход через 3-й. Спуск к этой секции — по лестнице №${detour.stairNumber}. <a href="./orientation.html#panel-2">Фото указателя →</a></p>`:''}
-  ${destinationSign?`<p class="nav-route-evidence">На указателе 4-го этажа ищите диапазон ${destinationSign}. <a href="./orientation.html#panel-4">Фото указателя →</a></p>`:''}
-  ${graphicsAvailable?'':scene?'<p>Выберите этаж, чтобы увидеть его участок пути. А — начало, Б — цель, цифры — номера лестниц.</p>':'<p>Карта недоступна. Следуйте текстовым шагам маршрута.</p>'}
+  ${graphicsAvailable?'':scene?'<p>Выберите этаж, чтобы увидеть его участок пути. Точка А обозначает начало, точка Б обозначает цель. Цифры показывают номера лестниц.</p>':'<p>Карта недоступна. Следуйте текстовым шагам маршрута.</p>'}
   <details class="nav-disclosure-group nav-route-all-steps"><summary>Все шаги · ${route.floors.length}</summary><ol>${steps}</ol></details>
   ${journey?`<details class="nav-disclosure-group"><summary>Движение по маршруту</summary>${journey}</details>`:''}
-  <div class="nav-actions nav-route-extra">
-   <button type="button" class="nav-btn" data-route-origin>Настройки маршрута</button>
-   ${scene?`<button type="button" class="nav-btn" data-route-all>${graphicsAvailable?'Весь маршрут':'Этаж отправления'}</button>`:''}
-   <button type="button" class="nav-btn" data-route-share>Ссылка на маршрут</button>
-  </div>
-  <button type="button" class="nav-btn nav-btn-wide" data-route-close>К помещению</button>
+  <details class="nav-disclosure-group">
+   <summary>Настройки и ссылка</summary>
+   <div class="nav-actions nav-route-extra">
+    <button type="button" class="button nav-control" data-route-origin>Настройки маршрута</button>
+    ${scene?`<button type="button" class="button nav-control" data-route-all>${graphicsAvailable?'Весь маршрут':'Этаж отправления'}</button>`:''}
+    <button type="button" class="button nav-control" data-route-share>Скопировать ссылку</button>
+   </div>
+  </details>
   <details class="nav-route-sources">
-   <summary>Источники этого маршрута</summary>
+   <summary>Ориентиры и источники</summary>
+   ${detour?`<p class="nav-route-evidence">На панели 2-го этажа указан обход через 3-й. Спуск к этой секции — по лестнице №${detour.stairNumber}. <a href="./orientation.html#panel-2">Фото указателя →</a></p>`:''}
+   ${destinationSign?`<p class="nav-route-evidence">На указателе 4-го этажа ищите диапазон ${destinationSign}. <a href="./orientation.html#panel-4">Фото указателя →</a></p>`:''}
    <p>Площадки и обозначения взяты из планов. Точные двери, проходы и форма лестничных маршей требуют проверки в здании.</p>
    <ul>${[...new Set(route.floors)].map(floor=>{
     const source=floorSource(floor);
@@ -446,7 +605,7 @@ function renderRoute(){
   <p id="nav-stair-direction" class="nav-route-endpoints"></p>
   <p>Схема лестничных маршей и площадок</p>
   <p id="nav-stair-evidence"></p>
-  <button type="button" class="nav-btn nav-btn-wide" data-stair-back>К маршруту</button>
+  <button type="button" class="button nav-control nav-btn-wide" data-stair-back>К маршруту</button>
  </div>`;
  panel.hidden=false;
  setRouteStep(routeStep);
@@ -504,13 +663,33 @@ async function copyLink(url,container,label){
 function copyRoute(){
  if(route)copyLink(createRouteLink(location.href,route.from.id,route.to.id,routePreferences()),$('nav-route-overview'),'Ссылка на маршрут');
 }
-$('nav-results').addEventListener('click',event=>{const id=event.target.closest('[data-select]')?.dataset.select;if(id)select(id)});$('nav-directory-results').addEventListener('click',event=>{const n=event.target.closest('[data-directory]')?.dataset.directory;if(n)selectDirectory(n)});
+$('nav-results').addEventListener('click',event=>{const id=event.target.closest('[data-select]')?.dataset.select;if(id)select(id)});
+$('nav-directory-results').addEventListener('click',event=>{
+ const button=event.target.closest('button');
+ if(button?.dataset.catalog)selectCatalog(button.dataset.catalog);
+ if(button?.dataset.directory)selectDirectory(button.dataset.directory);
+});
 $('nav-detail').addEventListener('click',event=>{
  const button=event.target.closest('button');
  if(!button)return;
  if(button.hasAttribute('data-close'))closePassport();
  if(button.hasAttribute('data-share-room')&&current())copyLink(createSpaceLink(location.href,selected),$('nav-detail'),'Ссылка на помещение');
  if(button.hasAttribute('data-route'))displayRoute();
+ if(button.hasAttribute('data-room-edit')&&catalogRoom())editRoom(catalogRoom());
+ if(button.hasAttribute('data-room-interior')){
+  if(interiorOpen){
+   interiorOpen=false;
+   clearTimeout(catalogRefreshTimer);
+   if(selected)scene.focusRoom(selected,{reframe:true});
+   else scene.setView(viewLevel);
+  }else if(scene.showInterior(selected,catalogRoom())){
+   interiorOpen=true;
+   setProjectionControls(false);
+   void refreshCatalogRoom();
+  }
+  renderDetail();
+  $('nav-detail').querySelector('[data-room-interior]')?.focus({preventScroll:true});
+ }
  if(button.hasAttribute('data-route-settings'))openRouteSettings();
  if(button.hasAttribute('data-start')&&selected&&setOrigin(selected)){persistOrigin();toast('Точка старта изменена. Выберите, куда идти.');}
  if(button.dataset.contactRoom)window.openContactModal?.({room:button.dataset.contactRoom,subject:'Вопрос по аудитории '+button.dataset.contactRoom});
@@ -656,16 +835,50 @@ $('nav-start-share').addEventListener('click',()=>{
  if(campus?.entries.get(id)?.point)copyLink(createStartLink(location.href,id),$('nav-origin-tools'),'Ссылка на точку старта');
 });
 document.querySelectorAll('[data-level]').forEach(button=>button.addEventListener('click',()=>showMapFloor(button.dataset.level)));
+$('nav-all-floors').addEventListener('click',()=>{
+ if(!graphicsAvailable||route)return;
+ const show=!allFloorsVisible;
+ clearSelection();
+ allFloorsVisible=show;
+ setLevel(0);
+});
 document.querySelectorAll('[data-level]').forEach(b=>{const peek=()=>scene?.previewFloor?.(Number(b.dataset.level));b.addEventListener('pointerenter',peek);b.addEventListener('focus',peek);b.addEventListener('pointerleave',()=>scene?.previewFloor?.(null));b.addEventListener('blur',()=>scene?.previewFloor?.(null));});
-$('nav-projection').addEventListener('click',()=>{const plan=$('nav-projection').getAttribute('aria-pressed')!=='true';if(plan&&!scene?.view)setLevel(current()?.floor||4);scene?.setProjection?.(plan);$('nav-projection').setAttribute('aria-pressed',String(plan));$('nav-projection').querySelector('span').textContent=plan?'3D':'2D';$('nav-rotate').disabled=plan;});$('nav-rotate').addEventListener('click',()=>scene?.rotate?.());
-$('nav-zoom-in').addEventListener('click',()=>scene?.zoom(1.2));$('nav-zoom-out').addEventListener('click',()=>scene?.zoom(1/1.2));$('nav-map-reset').addEventListener('click',()=>scene?.reset());$('nav-list-toggle').addEventListener('click',()=>{app.classList.toggle('is-list-open');syncSidebar()});
+function setProjectionControls(plan){
+ const projection=$('nav-projection');
+ projection.setAttribute('aria-pressed',String(plan));
+ projection.querySelector('span').textContent=plan?'3D':'2D';
+ $('nav-rotate').disabled=plan;
+}
+$('nav-projection').addEventListener('click',()=>{
+ if(!scene?.setProjection)return;
+ const plan=$('nav-projection').getAttribute('aria-pressed')!=='true';
+ if(plan&&!scene.view)setLevel(current()?.floor||route?.from.floor||1);
+ if(interiorOpen){interiorOpen=false;renderDetail();}
+ scene.setProjection(plan);
+ setProjectionControls(plan);
+});
+$('nav-rotate').addEventListener('click',()=>scene?.rotate?.());
+$('nav-zoom-in').addEventListener('click',()=>scene?.zoom(1.2));$('nav-zoom-out').addEventListener('click',()=>scene?.zoom(1/1.2));$('nav-map-reset').addEventListener('click',()=>scene?.reset());
 $('nav-list-close').addEventListener('click',closeSearch);
 window.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&!document.querySelector('dialog[open]')){event.preventDefault();openList();$('nav-query').focus();return;}if(event.key==='Escape'&&!document.querySelector('dialog[open]')){if(app.classList.contains('is-list-open')){event.preventDefault();closeSearch();return}if(routeStairFocus!==null){leaveRouteStair();return;}if(route){returnToRoom();$('nav-detail').querySelector('[data-route]')?.focus()}else if(selected||directoryEntry){closePassport()}else setLevel(0);}});
-$('campus-map').addEventListener('keydown',event=>{if(event.key==='+'||event.key==='='){event.preventDefault();scene?.zoom(1.2)}if(event.key==='-'){event.preventDefault();scene?.zoom(1/1.2)}});
+const mapArrows={ArrowLeft:[-48,0],ArrowRight:[48,0],ArrowUp:[0,48],ArrowDown:[0,-48]};
+$('campus-map').addEventListener('keydown',event=>{
+ if(event.target!==event.currentTarget||event.altKey||event.ctrlKey||event.metaKey||!scene)return;
+ const {key}=event;
+ if(key==='+'||key==='=')scene.zoom(1.2);
+ else if(key==='-')scene.zoom(1/1.2);
+ else if(key==='Home')scene.reset();
+ else if(scene.pan&&Object.hasOwn(mapArrows,key))scene.pan(...mapArrows[key]);
+ else return;
+ event.preventDefault();
+});
 function findWork(){resetFilters();mode='work';setLevel(4);openList();updateAll();$('nav-search-title').setAttribute('tabindex','-1');$('nav-search-title').focus({preventScroll:true});}
-$('nav-open-model').addEventListener('click',()=>{clearSelection();resetFilters();setLevel(viewLevel?0:1)});
-$('nav-find-work').addEventListener('click',findWork);
-document.addEventListener('pointerdown',event=>{if(app.classList.contains('is-list-open')&&!event.target.closest('#nav-sidebar,.nav-search,#nav-list-toggle,#nav-find-work'))closeList()});
+$('nav-find-work').addEventListener('click',()=>{
+ $('nav-project-menu').hidePopover();
+ clearSelection();
+ findWork();
+});
+document.addEventListener('pointerdown',event=>{if(app.classList.contains('is-list-open')&&!event.target.closest('#nav-sidebar,.nav-search,#nav-find-work'))closeList()});
 $('nav-search-shortcut').textContent=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘ K':'Ctrl K';
 initContactForm();window.activateContactMode=(options={})=>{mode='contact';updateAll();openList();if(options.room){const r=$('sidebar-contact-room');if(r)r.value=options.room;}if(options.subject){const s=$('sidebar-contact-subject');if(s)s.value=options.subject;}setTimeout(()=>$('sidebar-contact-name')?.focus(),50);};
 updateAll();
@@ -699,7 +912,7 @@ try{const load=async path=>{const r=await fetch(path);if(!r.ok)throw Error(path)
  const versionNote=$('nav-map-version');
  versionNote.hidden=!previewRequested;
  versionNote.textContent=mapRouting.error||'Предпросмотр локальной версии карты. Закрытия действуют только здесь.';
- try{const {createNavigatorScene}=await import('./navigator-scene.js?v=20261113-navigation');scene=createNavigatorScene({container:$('campus-map'),campus,onSelect:select,onFloor:showMapFloor,onPreview:state=>{const button=$('nav-route').querySelector('[data-route-play]');if(!button)return;button.setAttribute('aria-pressed',String(state.playing));button.innerHTML=icon('play')+(state.playing?'Приостановить':state.done?'Показать ещё раз':'Показать движение');$('nav-route-progress').value=Math.round(state.progress*1000);$('nav-route-position').textContent=state.done?'Вы у цели':state.connection&&state.floor!==state.toFloor?`${routePreferences().stepFree?'Лифт':'Лестница'} · ${state.floor} → ${state.toFloor}`:`${state.floor||route?.from.floor||1}-й этаж · ${Math.round(state.progress*100)}%`;if(state.playing||state.done||seekingPreview)setRouteStep(state.step);},onFailure:switchToPlan});graphicsAvailable=true;$('nav-loading').hidden=true;}catch{switchToPlan();}
+ try{const {createNavigatorScene}=await import('./navigator-scene.js?v=20261124-atlas-polish');scene=createNavigatorScene({container:$('campus-map'),campus,onSelect:select,onFloor:showMapFloor,onPreview:state=>{const button=$('nav-route').querySelector('[data-route-play]');if(!button)return;button.setAttribute('aria-pressed',String(state.playing));button.innerHTML=icon('play')+(state.playing?'Приостановить':state.done?'Показать ещё раз':'Показать движение');$('nav-route-progress').value=Math.round(state.progress*1000);$('nav-route-position').textContent=state.done?'Вы у цели':state.connection&&state.floor!==state.toFloor?`${routePreferences().stepFree?'Лифт':'Лестница'} · ${state.floor} → ${state.toFloor}`:`${state.floor||route?.from.floor||1}-й этаж · ${Math.round(state.progress*100)}%`;if(state.playing||state.done||seekingPreview)setRouteStep(state.step);},onFailure:switchToPlan});graphicsAvailable=true;$('nav-loading').hidden=true;}catch{switchToPlan();}
  updateAll();
  const link=readNavigationLink(new URL(location.href),defaultOrigin);
  const target=link.target??pilotRoomById(link.roomId)?.spaceId??link.spaceId;
@@ -714,5 +927,22 @@ try{const load=async path=>{const r=await fetch(path);if(!r.ok)throw Error(path)
   if(!current()?.point)toast('Помещение по ссылке недоступно для маршрута.');
   else if(hasOrigin)displayRoute();
  }
-}catch{openList();$('nav-loading').textContent='Не удалось загрузить карту. Проверьте подключение и обновите страницу.';$('nav-loading').classList.add('is-error');updateAll();}
-window.addEventListener('pagehide',event=>{if(!event.persisted)scene?.dispose()});
+}catch{openList();$('nav-loading').textContent='Не удалось загрузить карту.';const loading=$('nav-loading');loading.classList.add('is-error');loading.insertAdjacentHTML('beforeend','<a class="button button-primary" href="./orientation.html">Открыть планы этажей</a><button class="button" type="button">Повторить загрузку</button>');loading.querySelector('button').addEventListener('click',()=>location.reload());updateAll();}
+void fetchRoomCatalog().then(rooms=>{
+ if(!Array.isArray(rooms))return;
+ for(const room of rooms)storeCatalogRoom(room);
+ scene?.setRoomCatalog(rooms);
+ updateAll();
+ if(interiorOpen&&catalogRoom()){
+  scene?.showInterior(selected,catalogRoom());
+  void refreshCatalogRoom();
+ }
+}).catch(()=>{});
+document.addEventListener('visibilitychange',()=>{
+ clearTimeout(catalogRefreshTimer);
+ if(!document.hidden)void refreshCatalogRoom();
+});
+window.addEventListener('pagehide',event=>{
+ clearTimeout(catalogRefreshTimer);
+ if(!event.persisted)scene?.dispose();
+});
