@@ -183,20 +183,15 @@ export function openContactModal(options = {}) {
     }, 50);
   }
 
-  // Также активируем вкладку связи на боковой панели главной страницы
-  if (typeof window.activateContactMode === 'function') {
-    window.activateContactMode(options);
-  } else {
-    const sidebarForm = document.getElementById('sidebar-contact-form');
-    if (sidebarForm) {
-      if (options.room) {
-        const roomInput = sidebarForm.querySelector('[name="room"]');
-        if (roomInput) roomInput.value = options.room;
-      }
-      if (options.subject) {
-        const subjSelect = sidebarForm.querySelector('[name="subject"]');
-        if (subjSelect) subjSelect.value = options.subject;
-      }
+  const sidebarForm = document.getElementById('sidebar-contact-form');
+  if (sidebarForm) {
+    if (options.room) {
+      const roomInput = sidebarForm.querySelector('[name="room"]');
+      if (roomInput) roomInput.value = options.room;
+    }
+    if (options.subject) {
+      const subjSelect = sidebarForm.querySelector('[name="subject"]');
+      if (subjSelect) subjSelect.value = options.subject;
     }
   }
 }

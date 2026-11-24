@@ -31,7 +31,7 @@ export function createFloorScene({container,onFailure,onMode=()=>{},onExit=()=>{
  function inside(f,x,y){let yes=false;for(let i=0,j=f.footprint.length-1;i<f.footprint.length;j=i++){const a=f.footprint[i],b=f.footprint[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])yes=!yes;}return yes;}
  function furnish(f){
   // Furniture is an illustrative layer, never a claim about present equipment or access.
-  const [left,right]=[Math.min(...f.footprint.map(p=>p[0])),Math.max(...f.footprint.map(p=>p[0]))];const bottom=Math.max(...f.footprint.map(p=>p[1]));let count=0;
+  const [left,right]=[Math.min(...f.footprint.map(p=>p[0])),Math.max(...f.footprint.map(p=>p[0]))];let count=0;
   const candidates=[];
   if(f.floor<5){const end=f.footprint[f.footprint.length-2],start=f.footprint[f.footprint.length-1];for(let x=left+310;x<right-70;x+=79){const localBottom=start[1]+(x-start[0])*(end[1]-start[1])/(end[0]-start[0]);candidates.push([x,localBottom-48],[x,localBottom-128]);}}
   for(let i=0;i<f.footprint.length;i++){const a=f.footprint[i],b=f.footprint[(i+1)%f.footprint.length];if(a[1]>200||b[1]>200||b[0]-a[0]<180)continue;for(const y of [65,130,240,310])for(const x of [a[0]+52,b[0]-47])candidates.push([x,Math.min(a[1],b[1])+y]);}

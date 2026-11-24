@@ -1,4 +1,4 @@
-import {catalogSummary,saveRoomCounts} from './room-catalog.js';
+import {catalogSummary,saveRoomCounts} from './room-catalog.js?v=20261123-room-realism';
 
 export function createRoomEditor(dialog, onRoom, onSaved) {
   const form = dialog.querySelector('form');

@@ -1,4 +1,4 @@
-import {createRouteLink} from './navigation-link.js?v=20261112-polish';
+import {createRouteLink} from './navigation-link.js?v=20261112-guide';
 import {mappedBuildingRoom} from './campus-buildings.js?v=20261112-polish';
 
 // Verified against the admissions office announcements, 12 November 2026.

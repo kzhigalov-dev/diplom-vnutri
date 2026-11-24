@@ -1,4 +1,4 @@
-import {createRouteLink} from './navigation-link.js';
+import {createRouteLink} from './navigation-link.js?v=20261112-guide';
 import {roomPlacements} from './room-placements.js';
 
 export const campusBuildings=[
