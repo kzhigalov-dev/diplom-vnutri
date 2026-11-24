@@ -1,8 +1,43 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>Корпуса — внутри.</title><link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./campus-days.css"><script type="module" src="./js/buildings.js?v=20261113-wayfinding"></script><link rel="stylesheet" href="./campus-interface.css?v=20261113-wayfinding"></head>
-<body class="campus-page"><header class="header"><a class="brand" href="./index.html">внутри<span>.</span></a><nav aria-label="Разделы"><a href="./index.html">Карта</a><a href="./buildings.html" aria-current="page">Корпуса</a><a href="./today.html">Сегодня</a></nav></header>
-<main class="page"><h1>Корпуса СПбГУПТД</h1><p class="lead">Найдите адрес по букве аудитории в расписании или откройте путь между корпусами.</p>
-<section class="notice"><h2>Маршрут по городу</h2><div class="building-controls"><label>Откуда<select id="building-from"></select></label><label>Куда<select id="building-to"></select></label></div>
-<p id="building-status" role="status"></p><div class="city-route-actions"><a id="building-route" class="button" target="_blank" rel="noopener noreferrer">Пешком в Google Картах ↗</a><a id="building-plan" class="button button-secondary" hidden>Открыть план этажей</a></div></section>
-<div id="building-list" class="cards"></div><p><a href="https://sutd.ru/studentam/schedule/" target="_blank" rel="noopener noreferrer">Обозначения в расписании СПбГУПТД ↗</a></p></main>
-<noscript><p class="page"><a href="https://sutd.ru/contacts/">Адреса корпусов на сайте университета</a></p></noscript></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>Корпуса | внутри.</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./campus-days.css?v=20261114-program">
+  <link rel="stylesheet" href="./campus-interface.css?v=20261124-minimal-ui">
+  <script type="module" src="./js/buildings.js?v=20261114-agenda"></script>
+</head>
+<body class="campus-page">
+<header class="header">
+  <a class="brand" href="./index.html">внутри<span>.</span></a>
+  <nav aria-label="Разделы"><a href="./index.html">Карта</a><a href="./buildings.html" aria-current="page">Корпуса</a><a href="./today.html">Сегодня</a><a href="./events.html">События</a></nav>
+</header>
+<main class="page day-page buildings-page">
+  <h1>Корпуса СПбГУПТД</h1>
+  <div class="day-layout">
+  <section class="route-planner" aria-labelledby="city-route">
+    <div class="day-section-heading"><h2 id="city-route">Пеший маршрут</h2></div>
+    <div class="building-controls">
+      <label>Откуда<select id="building-from"></select></label>
+      <label>Куда<select id="building-to"></select></label>
+    </div>
+    <p id="building-status" role="status"></p>
+    <div class="city-route-actions">
+      <a id="building-route" class="button button-primary" target="_blank" rel="noopener noreferrer">Открыть в Google Картах ↗</a>
+      <a id="building-plan" class="button button-outline" hidden>Открыть план этажей</a>
+    </div>
+  </section>
+  <section aria-labelledby="building-index-title">
+    <div class="day-section-heading"><h2 id="building-index-title">Адреса и обозначения</h2></div>
+    <p class="day-note">Буква перед номером аудитории в расписании указывает на корпус.</p>
+    <div class="building-index" id="building-list"></div>
+    <p class="day-related"><a class="text-link" href="https://sutd.ru/studentam/schedule/" target="_blank" rel="noopener noreferrer">Обозначения на сайте СПбГУПТД ↗</a></p>
+  </section>
+  </div>
+  <noscript><p><a href="https://sutd.ru/contacts/">Адреса корпусов на сайте университета</a></p></noscript>
+</main>
+</body>
+</html>

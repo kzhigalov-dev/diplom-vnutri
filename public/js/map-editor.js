@@ -2,7 +2,10 @@ import {createCampusNavigator} from './campus-navigation.js?v=20261112-floor-fit
 import {mapLinks,readMapState,saveMapSnapshot,restoreMapSnapshot,validateClosures} from './map-preview.js?v=20261112-floor-fit';
 
 const $=id=>document.getElementById(id);
-const status=message=>{$('status').textContent=message;};
+const status=message=>{
+ $('status').classList.remove('campus-loading');
+ $('status').textContent=message;
+};
 const node=(tag,text,className)=>{const el=document.createElement(tag);if(text!=null)el.textContent=text;if(className)el.className=className;return el;};
 const moscowDate=new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'});
 const formatDate=value=>value?moscowDate.format(new Date(value)):null;
@@ -26,7 +29,7 @@ async function init(){
    info.append(node('strong',byId.get(closure.linkId)?.label||closure.linkId),node('p',period(closure)));
    if(closure.reason)info.append(node('p',closure.reason));
    info.append(node('p',closure.linkId,'link-id'));
-   const remove=node('button','Удалить');remove.type='button';remove.setAttribute('aria-label',`Удалить закрытие: ${byId.get(closure.linkId)?.label||closure.linkId}`);remove.addEventListener('click',()=>{draft.splice(index,1);render();status('Черновик изменён. Сохраните новую локальную версию.');});
+   const remove=node('button','Удалить','button button-danger');remove.type='button';remove.setAttribute('aria-label',`Удалить закрытие: ${byId.get(closure.linkId)?.label||closure.linkId}`);remove.addEventListener('click',()=>{draft.splice(index,1);render();status('Черновик изменён. Сохраните новую локальную версию.');});
    row.append(info,remove);list.append(row);
   });
   const versions=$('versions');versions.replaceChildren();
@@ -34,7 +37,7 @@ async function init(){
   for(const snapshot of state.snapshots){
    const row=node('div',null,'row'),info=node('div'),current=snapshot.id===state.currentId;
    info.append(node('strong',`${formatDate(snapshot.createdAt)}${current?' · текущая':''}`),node('p',`Закрытий: ${snapshot.closures.length}`));
-   const restore=node('button','Восстановить');restore.type='button';restore.disabled=current;restore.addEventListener('click',()=>{
+   const restore=node('button','Восстановить','button');restore.type='button';restore.disabled=current;restore.addEventListener('click',()=>{
     try{state=restoreMapSnapshot(localStorage,navigator,snapshot.id);draft=structuredClone(state.snapshots[0].closures);render();status('Версия восстановлена локально. Откройте демо-маршрут для проверки.');}
     catch(error){status(`Не удалось восстановить версию: ${error.message}`);}
    });row.append(info,restore);versions.append(row);
@@ -53,7 +56,7 @@ async function init(){
   }catch(error){status(error.message);}
  });
  $('save').addEventListener('click',()=>{
-  try{state=saveMapSnapshot(localStorage,navigator,draft);draft=structuredClone(state.snapshots[0].closures);render();status('Локальная версия сохранена. Публичная карта не изменена.');}
+  try{state=saveMapSnapshot(localStorage,navigator,draft);draft=structuredClone(state.snapshots[0].closures);render();status('Локальная версия сохранена. Теперь её можно открыть в демо-маршруте.');}
   catch(error){status(`Не удалось сохранить версию: ${error.message}`);}
  });
  $('export').addEventListener('click',()=>{

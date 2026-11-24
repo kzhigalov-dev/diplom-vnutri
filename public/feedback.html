@@ -4,21 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ffffff">
-<title>Обратная связь — внутри.</title>
+<title>Обратная связь | внутри.</title>
 <meta name="description" content="Вопросы по кабинетам и замечания к карте корпуса СПбГУПТД.">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./styles.css">
 <link rel="stylesheet" href="./experience.css">
 <link rel="stylesheet" href="./gallery.css">
-<link rel="stylesheet" href="./navigator.css?v=20261106-ui2">
+<link rel="stylesheet" href="./navigator.css?v=20261124-minimal-ui">
 <link rel="stylesheet" href="./atlas-pages.css?v=20261106-ui2">
 <script defer src="./vendor/email.min.js"></script>
-<script type="module" src="./js/contact-form.js?v=20261113-navigation"></script>
+<script type="module" src="./js/contact-form.js?v=20261114-pan"></script>
 
-<link rel="stylesheet" href="./campus-interface.css?v=20261113-wayfinding"></head>
+<link rel="stylesheet" href="./campus-interface.css?v=20261124-minimal-ui"></head>
 <body class="campus-page about-page feedback-page">
 <header class="booking-header wrap">
-  <a class="mini-brand" href="./index.html" aria-label="Внутри — к зданию">внутри<span>.</span><small>Карта кампуса</small></a>
+  <a class="mini-brand" href="./index.html" aria-label="Открыть карту «внутри.»">внутри<span>.</span><small>Карта кампуса</small></a>
   <a href="./index.html">К карте</a>
   <a href="./about.html">Кабинеты и источники</a>
 </header>
@@ -26,24 +26,24 @@
 <main class="wrap feedback-main">
   <section class="feedback-intro" aria-labelledby="feedback-title">
     <h1 id="feedback-title">Написать нам</h1>
-    <p class="lead">Нашли неточность на карте, хотите уточнить кабинет или предложить идею? Расскажите об этом.</p>
+    <p class="lead">Сообщите об ошибке на карте или задайте вопрос об аудитории.</p>
     <p class="feedback-address">СПбГУПТД<br>Вознесенский проспект, 44–46</p>
   </section>
   <div class="feedback-card">
     <form id="feedback-page-form" class="contact-form" novalidate>
-      <div class="contact-grid">
-        <label class="contact-label">
+      <div class="contact-grid row">
+        <label class="contact-label six columns">
           <span>Ваше имя <b class="contact-req">*</b></span>
           <input type="text" name="user_name" id="page-contact-name" placeholder="Например: Иван Иванов" required autocomplete="name">
         </label>
-        <label class="contact-label">
+        <label class="contact-label six columns">
           <span>Email для ответа <b class="contact-req">*</b></span>
           <input type="email" name="user_email" id="page-contact-email" placeholder="student@sutd.ru" required autocomplete="email">
         </label>
       </div>
 
-      <div class="contact-grid">
-        <label class="contact-label">
+      <div class="contact-grid row">
+        <label class="contact-label six columns">
           <span>Тема обращения</span>
           <select name="subject" id="page-contact-subject">
             <option value="Вопрос по аудитории">Вопрос по аудитории</option>
@@ -52,7 +52,7 @@
             <option value="Другое">Другое</option>
           </select>
         </label>
-        <label class="contact-label">
+        <label class="contact-label six columns">
           <span>Кабинет, если нужно</span>
           <input type="text" name="room" id="page-contact-room" placeholder="Например: 452">
         </label>
@@ -65,13 +65,13 @@
 
       <div id="page-contact-status" class="contact-status" role="status" hidden></div>
 
+      <p class="contact-data">Поля формы отправляются через EmailJS. <a href="./privacy.html#feedback">Как обрабатываются данные</a></p>
       <div class="contact-form-actions">
-        <button type="submit" id="page-contact-submit-btn" class="nav-btn nav-btn-primary nav-btn-wide">
+        <button type="submit" id="page-contact-submit-btn" class="button button-primary nav-btn-wide">
           <span id="page-contact-submit-text">Отправить сообщение</span>
         </button>
       </div>
     </form>
-    <p class="feedback-service">Отправка через EmailJS. Укажите почту, на которую вам можно ответить.</p>
   </div>
 </main>
 </body>

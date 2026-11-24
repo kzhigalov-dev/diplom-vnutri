@@ -7,7 +7,10 @@ import {escapeHTML as e} from './escape-html.js';
 
 const $ = id => document.getElementById(id);
 const dateLabel=new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',weekday:'long',day:'numeric',month:'long',year:'numeric'});
-const formatDay=date=>dateLabel.format(new Date(date+'T12:00:00Z'));
+const formatDay=date=>{
+ const label=dateLabel.format(new Date(date+'T12:00:00Z'));
+ return label[0].toUpperCase()+label.slice(1);
+};
 let localSchedule=null,fileRevision=0,selectedDay=null;
 const status=$('schedule-status'),reset=$('schedule-reset'),daySelect=$('schedule-day');
 const weekSelect=$('schedule-week'),weekdaySelect=$('schedule-weekday');
@@ -20,11 +23,11 @@ function weeklyView(schedule,today){
  const weekday=selectedWeekday??(weekdays.find(lesson=>lesson.weekday>=todayIndex)??weekdays[0])?.weekday??todayIndex;
  weekSelect.value=schedule.week;
  weekdaySelect.value=String(weekday);
- $('today-date').textContent=WEEKDAYS[weekday].toLocaleUpperCase('ru-RU');
- $('schedule-title').textContent=schedule.group?'Группа '+schedule.group:'Расписание группы';
+ $('today-date').textContent=WEEKDAYS[weekday];
+ $('schedule-title').textContent=schedule.group?'Группа '+schedule.group:'Моё расписание';
  const classes=weekdays.filter(lesson=>lesson.weekday===weekday);
  $('next-status').textContent=classes.length
-  ?WEEK_TYPES[schedule.week]+' · '+WEEKDAYS[weekday].toLowerCase()
+  ?''
   :'На этот день занятий в выбранной неделе нет.';
  return {classes,next:null};
 }
@@ -34,17 +37,54 @@ function datedView(schedule,today,now){
  const day=schedule&&days.dates.includes(selectedDay)?selectedDay:days.initial;
  const classes=schedule?schedule.filter(item=>item.date===day).sort((a,b)=>a.start.localeCompare(b.start)):demoClasses;
  const next=day===today?nextClass(classes,now):null;
- $('today-date').textContent=formatDay(day).toLocaleUpperCase('ru-RU');
- $('schedule-title').textContent=schedule?'Моё расписание':'Пример дня';
+ $('today-date').textContent=schedule?formatDay(day):'Учебный день';
+ $('schedule-title').textContent=schedule?'Моё расписание':'Пример расписания';
  if(schedule){
   daySelect.replaceChildren(...days.dates.map(date=>new Option(date===today?'Сегодня · '+formatDay(date):formatDay(date),date)));
   daySelect.value=day;
  }
- $('next-status').textContent=next?'Ближайшее занятие выделено ниже.'
+ $('next-status').textContent=!schedule||next?''
   :!classes.length?(schedule?.length?'На выбранную дату занятий в файле нет.':'В файле нет занятий.')
   :day===today?'На сегодня больше нет неотменённых занятий.'
-  :day===days.initial&&!selectedDay?'На сегодня занятий в файле нет. Показано расписание на '+formatDay(day)+'.':'Занятия на выбранную дату.';
- return {classes,next};
+  :day===days.initial&&!selectedDay?'На сегодня занятий в файле нет.':'';
+ return {classes,next:schedule?next:null};
+}
+
+function lessonRow(item, next, imported) {
+ const address=item.address||(!imported?'Вознесенский проспект, 44–46':'');
+ const isNext=next?.id===item.id;
+ const statusLabel={moved:'Перенесено',cancelled:'Отменено'}[item.status];
+ const city=item.building&&item.status!=='cancelled'
+  ?buildingDirectionsLink(location.href,item.building,item.destination?item.room:undefined)
+  :null;
+ const destination=item.destination&&item.status!=='cancelled'
+  ?routeLink(location.href,item.destination)
+  :null;
+ const locationLabel=address||item.room?[
+  item.room?`<span class="agenda-room">Аудитория <strong>${e(item.room)}</strong></span>`:'',
+  address?`<span class="agenda-location-note">${e(address)}</span>`:'',
+  item.status==='moved'?`<span class="agenda-location-note">Вместо аудитории ${e(item.previousRoom)}</span>`:'',
+ ].join(''):'';
+ const actions=[
+  destination?`<a class="text-link" href="${e(destination)}">От входа до аудитории →</a>`:'',
+  city?`<a class="text-link" href="${e(city.href)}">${destination?'Сначала до корпуса':'До корпуса'} →</a>`:'',
+ ].join('');
+ return `<article class="agenda-row${isNext?' agenda-row-next':''}">
+  <div class="agenda-time"><time datetime="${item.start}">${item.start}</time><span>до <time datetime="${item.end}">${item.end}</time></span></div>
+  <div class="agenda-content">
+   <h3>${e(item.title)}</h3>
+   ${item.teacher?`<p>${e(item.teacher)}</p>`:''}
+   ${item.lessonType||statusLabel||isNext?`<div class="agenda-meta">
+    ${statusLabel?`<span class="agenda-state" data-status="${item.status}">${statusLabel}</span>`:''}
+    ${isNext?'<span class="agenda-state">Ближайшее</span>':''}
+    ${item.lessonType?`<span>${e(item.lessonType)}</span>`:''}
+   </div>`:''}
+  </div>
+  ${locationLabel||actions?`<div class="agenda-location">${locationLabel}
+   ${actions?`<div class="agenda-links">${actions}</div>`:''}
+   ${city&&item.room&&!destination?'<span class="agenda-location-note">Положение аудитории на плане не подтверждено.</span>':''}
+  </div>`:''}
+ </article>`;
 }
 
 function saveLocalSchedule(){
@@ -58,29 +98,15 @@ function saveLocalSchedule(){
 function renderSchedule(){
   const now=new Date(),today=todayMoscow(now),imported=localSchedule!==null;
   const weekly=localSchedule?.format==='weekly';
-  $('schedule-demo').hidden=imported;
   reset.hidden=!imported;
+  $('schedule-import-title').textContent=imported?'Управление расписанием':'Загрузить расписание';
   $('schedule-day-control').hidden=!imported||weekly;
   $('schedule-week-control').hidden=!weekly;
   $('schedule-weekday-control').hidden=!weekly;
   $('schedule-week-note').hidden=!weekly;
   const {classes,next}=weekly?weeklyView(localSchedule,today):datedView(localSchedule,today,now);
-  $('class-list').innerHTML=classes.map(item=>{
-    const place=item.status==='moved'?`Вместо аудитории ${item.previousRoom} → аудитория ${item.room}`:item.room?`Аудитория ${item.room}`:'';
-    const address=item.address||(localSchedule===null?'Вознесенский пр., 44–46':'');
-    const label=item.lessonType||{moved:'Перенос',cancelled:'Отменено',scheduled:'По расписанию'}[item.status];
-    const city=item.building&&item.status!=='cancelled'
-      ?buildingDirectionsLink(location.href,item.building,item.destination?item.room:undefined)
-      :null;
-    return `<article class="card ${next?.id===item.id?'card-next':''}">
-      <div class="card-time">${item.start}<span>до ${item.end}</span></div>
-      <div class="card-body"><div class="card-top"><span class="pill ${item.status}">${e(label)}</span>${next?.id===item.id?'<span class="next-label">Ближайшее</span>':''}</div>
-      <h3>${e(item.title)}</h3>${item.teacher||place||address?`<p>${[item.teacher,place,address].filter(Boolean).map(e).join('<br>')}</p>`:''}
-      ${item.destination?`<a class="text-link" href="${e(routeLink(location.href,item.destination))}">От входа до аудитории →</a>`:''}
-      ${city?`<a class="text-link" href="${e(city.href)}">${item.destination?'До корпуса и дальше до аудитории':'Маршрут до корпуса'} →</a>`:''}
-      ${city&&item.room&&!item.destination?'<p>Положение аудитории на карте пока не подтверждено.</p>':''}
-      </div></article>`;
-  }).join('')||(weekly?'<p class="empty">Выберите другой день или неделю.</p>':'<p class="empty">Выберите другую дату или загрузите файл с занятиями.</p>');
+  $('class-list').innerHTML=classes.map(item=>lessonRow(item,next,imported)).join('')||
+   `<p class="agenda-empty">${weekly?'Выберите другой день или неделю.':'Выберите другую дату или загрузите файл с занятиями.'}</p>`;
 }
 try{
   const saved=localStorage.getItem(SCHEDULE_STORAGE_KEY);
@@ -111,6 +137,8 @@ $('schedule-file').addEventListener('change',async event=>{
   const input=event.currentTarget,file=input.files[0];
   if(!file)return;
   const revision=++fileRevision;
+  status.classList.add('campus-loading');
+  $('class-list').setAttribute('aria-busy','true');
   status.textContent='Читаем файл…';
   try{
     const rows=await readScheduleFile(file);
@@ -126,11 +154,17 @@ $('schedule-file').addEventListener('change',async event=>{
   }catch(error){
     if(revision===fileRevision)status.textContent=error.message;
   }finally{
-    if(revision===fileRevision)input.value='';
+    if(revision===fileRevision){
+      input.value='';
+      status.classList.remove('campus-loading');
+      $('class-list').removeAttribute('aria-busy');
+    }
   }
 });
 reset.addEventListener('click',()=>{
   fileRevision++;
+  status.classList.remove('campus-loading');
+  $('class-list').removeAttribute('aria-busy');
   localSchedule=null;
   selectedDay=null;
   selectedWeekday=null;

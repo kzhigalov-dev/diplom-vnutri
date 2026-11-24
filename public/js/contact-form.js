@@ -18,7 +18,12 @@ async function sendEmailPayload(templateParams, statusEl, submitBtn, submitText,
   const hasKeys = Boolean(config.publicKey && config.serviceId && config.templateId);
 
   if (submitBtn) submitBtn.disabled = true;
-  if (submitText) submitText.textContent = 'Отправка…';
+  if (submitText) submitText.textContent = 'Отправляем…';
+  if (statusEl) {
+    statusEl.hidden = false;
+    statusEl.className = 'notice contact-status';
+    statusEl.innerHTML = '<span class="campus-spinner campus-spinner-small" aria-hidden="true"></span> Отправляем сообщение…';
+  }
 
   try {
     if (hasKeys && typeof window.emailjs !== 'undefined') {
@@ -38,12 +43,11 @@ async function sendEmailPayload(templateParams, statusEl, submitBtn, submitText,
       const roomInput = formEl.querySelector('[name="room"]');
       if (roomInput) roomInput.value = '';
     } else {
-      await new Promise(resolve => setTimeout(resolve, 500));
       if (statusEl) {
         statusEl.hidden = false;
-        statusEl.className = 'contact-status is-info';
+        statusEl.className = 'notice contact-status';
         statusEl.innerHTML = !hasKeys
-          ? 'Отправка пока недоступна. Текст сохранён в форме — попробуйте позже.'
+          ? 'Отправка пока недоступна. Попробуйте позже. Текст остался в форме.'
           : 'Сервис отправки ещё загружается. Повторите попытку через несколько секунд.';
       }
     }
@@ -68,46 +72,79 @@ function bindForm(form) {
   const statusEl = form.querySelector('.contact-status') || form.parentElement?.querySelector('.contact-status');
   const submitBtn = form.querySelector('button[type="submit"]');
   const submitText = submitBtn?.querySelector('span') || submitBtn;
+  const fields = {
+    name: form.elements.namedItem('user_name'),
+    email: form.elements.namedItem('user_email'),
+    message: form.elements.namedItem('message'),
+  };
+  const validate = () => validateContactPayload({
+    name: fields.name?.value,
+    email: fields.email?.value,
+    message: fields.message?.value,
+  });
+  const updateErrors = Object.entries(fields).flatMap(([key, input]) => {
+    if (!input) return [];
+    const error = document.createElement('span');
+    error.id = `${input.id || `${form.id}-${key}`}-error`;
+    error.className = 'contact-field-error';
+    error.hidden = true;
+    const labelText = input.closest('label')?.firstElementChild;
+    if (labelText && !input.hasAttribute('aria-labelledby') && !input.hasAttribute('aria-label')) {
+      labelText.id ||= `${input.id || `${form.id}-${key}`}-label`;
+      input.setAttribute('aria-labelledby', labelText.id);
+    }
+    input.after(error);
+    const update = message => {
+      const descriptions = (input.getAttribute('aria-describedby') || '')
+        .split(/\s+/).filter(id => id && id !== error.id);
+      if (message) descriptions.push(error.id);
+      if (descriptions.length) input.setAttribute('aria-describedby', descriptions.join(' '));
+      else input.removeAttribute('aria-describedby');
+      input.setAttribute('aria-invalid', String(Boolean(message)));
+      error.textContent = message || '';
+      error.hidden = !message;
+    };
+    update();
+    input.addEventListener('input', () => {
+      if (error.hidden || validate().errors[key]) return;
+      if (statusEl?.textContent === error.textContent) {
+        statusEl.hidden = true;
+        statusEl.textContent = '';
+      }
+      update();
+    });
+    form.addEventListener('reset', () => update());
+    return [errors => update(errors[key])];
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (submitBtn?.disabled) return;
     if (statusEl) {
       statusEl.hidden = true;
       statusEl.textContent = '';
     }
 
-    const nameInput = form.querySelector('[name="user_name"]') || form.querySelector('#contact-name');
-    const emailInput = form.querySelector('[name="user_email"]') || form.querySelector('#contact-email');
-    const subjectInput = form.querySelector('[name="subject"]') || form.querySelector('#contact-subject');
-    const roomInput = form.querySelector('[name="room"]') || form.querySelector('#contact-room');
-    const messageInput = form.querySelector('[name="message"]') || form.querySelector('#contact-message');
-
-    const name = nameInput?.value;
-    const email = emailInput?.value;
-    const subject = subjectInput?.value;
-    const room = roomInput?.value;
-    const message = messageInput?.value;
-
-    const validation = validateContactPayload({ name, email, message });
+    const validation = validate();
+    updateErrors.forEach(update => update(validation.errors));
     if (!validation.valid) {
-      const firstError = Object.values(validation.errors)[0];
-      if (statusEl) {
+      const [firstError, message] = Object.entries(validation.errors)[0];
+      const firstField = fields[firstError];
+      if (statusEl && firstField && document.activeElement === firstField) {
         statusEl.hidden = false;
         statusEl.className = 'contact-status is-error';
-        statusEl.innerHTML = escapeHTML(firstError);
+        statusEl.textContent = message;
       }
-      if (validation.errors.name) nameInput?.focus();
-      else if (validation.errors.email) emailInput?.focus();
-      else if (validation.errors.message) messageInput?.focus();
+      firstField?.focus();
       return;
     }
 
     const templateParams = formatContactTemplateParams({
-      name,
-      email,
-      subject,
-      room,
-      message,
+      name: fields.name?.value,
+      email: fields.email?.value,
+      subject: form.elements.namedItem('subject')?.value,
+      room: form.elements.namedItem('room')?.value,
+      message: fields.message?.value,
     });
 
     await sendEmailPayload(templateParams, statusEl, submitBtn, submitText, form);

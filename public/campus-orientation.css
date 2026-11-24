@@ -2,7 +2,7 @@
 .orientation-lead .button{margin-top:12px;flex-shrink:0}
 .orientation-address{margin:0 0 8px;color:#5b6268;font-size:14px}
 .orientation-section{padding-block:26px;border-top:1px solid #284b7330}
-.orientation-section h2{margin:0 0 8px}
+.orientation-section h2{margin:0 0 8px;font-size:clamp(1.5rem,3vw,2.25rem);line-height:1.2;overflow-wrap:anywhere}
 .orientation-section>p{max-width:75ch}
 .orientation-figure{margin:18px 0}
 .orientation-figure img{width:100%;height:auto;display:block;border-radius:10px}

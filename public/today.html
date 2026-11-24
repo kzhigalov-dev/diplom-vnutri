@@ -1,21 +1,62 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>Сегодня — внутри.</title><link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./campus-days.css?v=20261113-xlsx"><script type="module" src="./js/today.js?v=20261113-xlsx"></script><link rel="stylesheet" href="./campus-interface.css?v=20261113-wayfinding"></head>
-<body class="campus-page"><header class="header"><a class="brand" href="./index.html">внутри<span>.</span></a><nav aria-label="Разделы"><a href="./index.html">Карта</a><a aria-current="page" href="./today.html">Сегодня</a><a href="./events.html">События</a></nav></header>
-<main class="page"><div class="eyebrow">ЛИЧНЫЙ ДЕНЬ</div><h1>Сегодня в кампусе</h1><p class="lead">Расписание занятий, переносы и маршруты до аудиторий.</p><div class="notice" id="schedule-demo"><strong>Это пример, а не ваше расписание.</strong> Занятия и изменения придуманы для демонстрации.</div>
-<div class="section-title"><div><p class="eyebrow" id="today-date">МОСКОВСКОЕ ВРЕМЯ</p><h2 id="schedule-title">Пример дня</h2></div><span class="time-note">Время: Москва</span></div>
-<section class="notice schedule-import" aria-labelledby="schedule-import-title">
- <div><h2 id="schedule-import-title">Загрузить расписание</h2><p id="schedule-file-help">На сайте СПбГУПТД найдите свою группу и скачайте расписание в Excel. Поддерживается также JSON. Файл обрабатывается в браузере.</p></div>
- <div class="schedule-import-links"><a href="https://schedule.sutd.ru/student" target="_blank" rel="noopener noreferrer">Найти группу на сайте СПбГУПТД ↗</a><a href="./data/schedule-example.json" download>Пример JSON ↓</a></div>
- <label class="schedule-file-label" for="schedule-file">Файл расписания</label>
- <input id="schedule-file" type="file" accept=".xlsx,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json" aria-describedby="schedule-file-help">
- <button class="button" id="schedule-reset" type="button" hidden>Удалить расписание</button>
- <p id="schedule-status" role="status"></p>
-</section>
-<div class="schedule-filters">
- <label id="schedule-week-control" hidden>Учебная неделя<select id="schedule-week"><option value="numerator">Числитель</option><option value="denominator">Знаменатель</option></select></label>
- <label id="schedule-weekday-control" hidden>День недели<select id="schedule-weekday"></select></label>
- <label id="schedule-day-control" hidden>Дата занятий<select id="schedule-day"></select></label>
-</div>
-<p class="subtle" id="schedule-week-note" hidden>В Excel указаны дни недели. Выберите числитель или знаменатель по <a href="https://sutd.ru/studentam/schedule/" target="_blank" rel="noopener noreferrer">календарю СПбГУПТД</a>.</p>
-<p class="subtle" id="next-status" role="status"></p><div class="cards" id="class-list"></div>
-<section class="explore"><div><p class="eyebrow">ДЛЯ ГОСТЕЙ</p><h2>Посмотреть программу</h2><p>Пример прогулки по кампусу, которым можно поделиться.</p></div><a class="button" href="./events.html">Открыть события →</a></section></main><noscript><p class="page">Для просмотра расписания включите JavaScript.</p></noscript></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>Сегодня | внутри.</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./campus-days.css?v=20261114-program">
+  <link rel="stylesheet" href="./campus-interface.css?v=20261124-minimal-ui">
+  <script type="module" src="./js/today.js?v=20261114-agenda"></script>
+</head>
+<body class="campus-page">
+<header class="header">
+  <a class="brand" href="./index.html">внутри<span>.</span></a>
+  <nav aria-label="Разделы"><a href="./index.html">Карта</a><a href="./buildings.html">Корпуса</a><a href="./today.html" aria-current="page">Сегодня</a><a href="./events.html">События</a></nav>
+</header>
+<main class="page day-page today-page">
+  <div class="schedule-masthead">
+    <h1>Расписание</h1>
+    <details class="schedule-import">
+      <summary id="schedule-import-title">Загрузить расписание</summary>
+      <div class="schedule-import-content">
+        <p id="schedule-file-help">Скачайте расписание своей группы в Excel на сайте СПбГУПТД или выберите файл JSON. Файл обрабатывается в браузере. <a href="./privacy.html#schedule">Как сохраняется расписание</a></p>
+        <div class="schedule-import-links">
+          <a href="https://schedule.sutd.ru/student" target="_blank" rel="noopener noreferrer">Найти группу ↗</a>
+          <a href="./data/schedule-example.json" download>Пример JSON ↓</a>
+        </div>
+        <div class="schedule-file-row">
+          <div>
+            <label class="schedule-file-label" for="schedule-file">Файл расписания</label>
+            <input id="schedule-file" type="file" accept=".xlsx,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json" aria-describedby="schedule-file-help">
+          </div>
+          <button class="button" id="schedule-reset" type="button" hidden>Удалить расписание</button>
+        </div>
+      </div>
+    </details>
+  </div>
+  <p id="schedule-status" role="status"></p>
+
+  <section class="schedule-agenda" aria-labelledby="today-date">
+    <div class="day-section-heading">
+      <div>
+        <p class="day-context" id="schedule-title"></p>
+        <h2 id="today-date"></h2>
+      </div>
+      <span class="time-note">Время по Москве</span>
+    </div>
+    <div class="schedule-filters">
+      <label id="schedule-week-control" hidden>Учебная неделя<select id="schedule-week"><option value="numerator">Числитель</option><option value="denominator">Знаменатель</option></select></label>
+      <label id="schedule-weekday-control" hidden>День недели<select id="schedule-weekday"></select></label>
+      <label id="schedule-day-control" hidden>Дата занятий<select id="schedule-day"></select></label>
+    </div>
+    <p class="subtle" id="schedule-week-note" hidden>Номер недели можно сверить с <a href="https://sutd.ru/studentam/schedule/" target="_blank" rel="noopener noreferrer">календарём СПбГУПТД ↗</a>.</p>
+    <p class="subtle" id="next-status" role="status"></p>
+    <div class="agenda-list" id="class-list"></div>
+  </section>
+  <p class="day-related"><a class="text-link" href="./events.html">События и прогулка по кампусу →</a></p>
+  <noscript><p>Для просмотра расписания включите JavaScript.</p></noscript>
+</main>
+</body>
+</html>
