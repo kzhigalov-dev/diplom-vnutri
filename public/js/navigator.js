@@ -10,7 +10,7 @@ import {createRouteLink,createServiceLink,createSpaceLink,createStartLink,readNa
 import {routeFloorInstruction} from './route-preview.js?v=20261112-visit';
 import {pilotRooms,pilotEquipment,pilotRoomById,pilotRoomBySpace,filterPilotRooms} from './pilot-spaces.js?v=20261113-navigation';
 import {escapeHTML as e} from './escape-html.js';
-import {initContactForm} from './contact-form.js?v=20261114-pan';
+import {initContactForm} from './contact-form.js?v=20261125-skills-polish';
 import {catalogPhotoReference,catalogSummary,catalogTitle,fetchRoomCatalog} from './room-catalog.js?v=20261123-room-realism';
 import {createRoomEditor} from './room-editor.js';
 const $=id=>document.getElementById(id),app=$('nav-app');
@@ -31,7 +31,23 @@ let seekingPreview=false,visible=new Set();
 const storage={getItem:key=>localStorage.getItem(key)};
 $('nav-team-size').append(...Array.from({length:Math.max(...pilotRooms.map(room=>room.seatCount))},(_,i)=>new Option(String(i+1),String(i+1))));
 $('nav-equipment').append(new Option('Любое',''),...pilotEquipment.map(item=>new Option(item,item)));
-function toast(message){clearTimeout(toastTimer);$('nav-toast').textContent=message;$('nav-toast').hidden=false;toastTimer=setTimeout(()=>$('nav-toast').hidden=true,5000);return toastTimer; }
+let toastHovered=false,toastFocused=false;
+function scheduleToastHide(){
+ clearTimeout(toastTimer);
+ if(toastHovered||toastFocused||$('nav-toast').hidden)return;
+ toastTimer=setTimeout(()=>{$('nav-toast').hidden=true;},5000);
+}
+function toast(message){
+ clearTimeout(toastTimer);
+ $('nav-toast').textContent=message;
+ $('nav-toast').hidden=false;
+ scheduleToastHide();
+ return toastTimer;
+}
+$('nav-toast').addEventListener('pointerenter',()=>{toastHovered=true;clearTimeout(toastTimer);});
+$('nav-toast').addEventListener('pointerleave',()=>{toastHovered=false;scheduleToastHide();});
+$('nav-toast').addEventListener('focusin',()=>{toastFocused=true;clearTimeout(toastTimer);});
+$('nav-toast').addEventListener('focusout',()=>{toastFocused=false;scheduleToastHide();});
 const editRoom=createRoomEditor($('nav-room-editor'),applyCatalogRoom,()=>toast('Оснащение сохранено.'));
 function categoryName(category){return {computer:'С компьютером',quiet:'Тихая работа',team:'Для команды'}[category]||'Помещение модели'}
 function filter(){
@@ -49,9 +65,16 @@ function catalogRoomForSpace(id){return catalogRooms.get(catalogBySpace.get(id))
 function catalogRoom(){return catalogSelection?catalogRooms.get(catalogSelection):catalogRoomForSpace(selected)}
 const mobile=matchMedia('(max-width:700px)');
 const contextPanels=[$('nav-detail'),$('nav-route')];
+let lastContextHeight=-1,contextHeightFrame=null;
 const contextObserver=new ResizeObserver(()=>{
- const height=contextPanels.find(panel=>!panel.hidden)?.offsetHeight||0;
- app.style.setProperty('--nav-context-height',`${height}px`);
+ if(contextHeightFrame!==null)return;
+ contextHeightFrame=requestAnimationFrame(()=>{
+  contextHeightFrame=null;
+  const height=contextPanels.find(panel=>!panel.hidden)?.offsetHeight||0;
+  if(height===lastContextHeight)return;
+  lastContextHeight=height;
+  app.style.setProperty('--nav-context-height',`${height}px`);
+ });
 });
 contextPanels.forEach(panel=>contextObserver.observe(panel,{box:'border-box'}));
 function syncSidebar(){
@@ -323,7 +346,7 @@ function renderResults(){
  $('nav-result-count').textContent=serviceOnly
   ?`Услуг: ${serviceCount}`
   :campus?`На схеме: ${result.length}${mode==='work'?` из ${pilotRooms.length}`:''}${unplaced.length?` · Без привязки: ${unplaced.length}`:''}${serviceCount?` · Услуг: ${serviceCount}`:''}`:'Загружаем карту…';
- $('nav-search-title').textContent={contact:'Обратная связь',work:'Место для работы',services:'Услуги'}[mode]||'Поиск по кампусу';
+ $('nav-search-title').textContent={contact:'Написать нам',work:'Место для работы',services:'Услуги'}[mode]||'Поиск по кампусу';
  $('nav-search-modes').hidden=isContact;
  for(const key of ['all','work','services'])$('nav-mode-'+key).setAttribute('aria-pressed',String(mode===key));
  $('nav-sidebar-contact').hidden=!isContact;
@@ -810,7 +833,35 @@ function openRouteSettings(){
  $('nav-settings-submit').textContent=current()?.point?'Построить маршрут':'Сохранить';
  $('nav-route-settings').showModal();
 }
+const projectMenu=$('nav-project-menu');
+const projectMenuToggle=document.querySelector('.nav-menu-toggle');
+let projectMenuAction=false;
+if(projectMenu&&projectMenuToggle){
+ projectMenu.addEventListener('toggle',event=>{
+  const open=event.newState==='open';
+  projectMenuToggle.setAttribute('aria-expanded',String(open));
+  if(open){
+   projectMenuAction=false;
+   projectMenu.querySelector('a, button')?.focus({preventScroll:true});
+  }else if(!projectMenuAction&&(projectMenu.contains(document.activeElement)||document.activeElement===document.body)){
+   projectMenuToggle.focus({preventScroll:true});
+  }
+  if(!open)projectMenuAction=false;
+ });
+ projectMenu.addEventListener('keydown',event=>{
+  if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+  const items=[...projectMenu.querySelectorAll('a, button')].filter(el=>!el.disabled&&!el.hidden);
+  if(!items.length)return;
+  event.preventDefault();
+  const index=items.indexOf(document.activeElement);
+  if(event.key==='Home')items[0].focus();
+  else if(event.key==='End')items.at(-1).focus();
+  else if(event.key==='ArrowDown')items[(index+1)%items.length].focus();
+  else items[(index-1+items.length)%items.length].focus();
+ });
+}
 document.querySelector('[data-open-route-settings]').addEventListener('click',()=>{
+ projectMenuAction=true;
  $('nav-project-menu').hidePopover();
  openRouteSettings();
 });
@@ -860,7 +911,7 @@ $('nav-projection').addEventListener('click',()=>{
 $('nav-rotate').addEventListener('click',()=>scene?.rotate?.());
 $('nav-zoom-in').addEventListener('click',()=>scene?.zoom(1.2));$('nav-zoom-out').addEventListener('click',()=>scene?.zoom(1/1.2));$('nav-map-reset').addEventListener('click',()=>scene?.reset());
 $('nav-list-close').addEventListener('click',closeSearch);
-window.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&!document.querySelector('dialog[open]')){event.preventDefault();openList();$('nav-query').focus();return;}if(event.key==='Escape'&&!document.querySelector('dialog[open]')){if(app.classList.contains('is-list-open')){event.preventDefault();closeSearch();return}if(routeStairFocus!==null){leaveRouteStair();return;}if(route){returnToRoom();$('nav-detail').querySelector('[data-route]')?.focus()}else if(selected||directoryEntry){closePassport()}else setLevel(0);}});
+window.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&!document.querySelector('dialog[open]')){event.preventDefault();openList();$('nav-query').focus();return;}if(event.key==='Escape'&&!document.querySelector('dialog[open]')&&!projectMenu?.matches(':popover-open')){if(app.classList.contains('is-list-open')){event.preventDefault();closeSearch();return}if(routeStairFocus!==null){leaveRouteStair();return;}if(route){returnToRoom();$('nav-detail').querySelector('[data-route]')?.focus()}else if(selected||directoryEntry){closePassport()}else setLevel(0);}});
 const mapArrows={ArrowLeft:[-48,0],ArrowRight:[48,0],ArrowUp:[0,48],ArrowDown:[0,-48]};
 $('campus-map').addEventListener('keydown',event=>{
  if(event.target!==event.currentTarget||event.altKey||event.ctrlKey||event.metaKey||!scene)return;
@@ -874,13 +925,14 @@ $('campus-map').addEventListener('keydown',event=>{
 });
 function findWork(){resetFilters();mode='work';setLevel(4);openList();updateAll();$('nav-search-title').setAttribute('tabindex','-1');$('nav-search-title').focus({preventScroll:true});}
 $('nav-find-work').addEventListener('click',()=>{
+ projectMenuAction=true;
  $('nav-project-menu').hidePopover();
  clearSelection();
  findWork();
 });
 document.addEventListener('pointerdown',event=>{if(app.classList.contains('is-list-open')&&!event.target.closest('#nav-sidebar,.nav-search,#nav-find-work'))closeList()});
 $('nav-search-shortcut').textContent=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘ K':'Ctrl K';
-initContactForm();window.activateContactMode=(options={})=>{mode='contact';updateAll();openList();if(options.room){const r=$('sidebar-contact-room');if(r)r.value=options.room;}if(options.subject){const s=$('sidebar-contact-subject');if(s)s.value=options.subject;}setTimeout(()=>$('sidebar-contact-name')?.focus(),50);};
+initContactForm();window.activateContactMode=(options={})=>{projectMenuAction=true;mode='contact';updateAll();openList();if(options.room){const r=$('sidebar-contact-room');if(r)r.value=options.room;}if(options.subject){const s=$('sidebar-contact-subject');if(s)s.value=options.subject;}setTimeout(()=>$('sidebar-contact-name')?.focus(),50);};
 updateAll();
 async function loadServices(){
  const params=new URLSearchParams(location.search),id=params.has('to')?null:params.get('service');
@@ -912,7 +964,7 @@ try{const load=async path=>{const r=await fetch(path);if(!r.ok)throw Error(path)
  const versionNote=$('nav-map-version');
  versionNote.hidden=!previewRequested;
  versionNote.textContent=mapRouting.error||'Предпросмотр локальной версии карты. Закрытия действуют только здесь.';
- try{const {createNavigatorScene}=await import('./navigator-scene.js?v=20261124-atlas-polish');scene=createNavigatorScene({container:$('campus-map'),campus,onSelect:select,onFloor:showMapFloor,onPreview:state=>{const button=$('nav-route').querySelector('[data-route-play]');if(!button)return;button.setAttribute('aria-pressed',String(state.playing));button.innerHTML=icon('play')+(state.playing?'Приостановить':state.done?'Показать ещё раз':'Показать движение');$('nav-route-progress').value=Math.round(state.progress*1000);$('nav-route-position').textContent=state.done?'Вы у цели':state.connection&&state.floor!==state.toFloor?`${routePreferences().stepFree?'Лифт':'Лестница'} · ${state.floor} → ${state.toFloor}`:`${state.floor||route?.from.floor||1}-й этаж · ${Math.round(state.progress*100)}%`;if(state.playing||state.done||seekingPreview)setRouteStep(state.step);},onFailure:switchToPlan});graphicsAvailable=true;$('nav-loading').hidden=true;}catch{switchToPlan();}
+ try{const {createNavigatorScene}=await import('./navigator-scene.js?v=20261125-skills-polish');scene=createNavigatorScene({container:$('campus-map'),campus,onSelect:select,onFloor:showMapFloor,onPreview:state=>{const button=$('nav-route').querySelector('[data-route-play]');if(!button)return;button.setAttribute('aria-pressed',String(state.playing));button.innerHTML=icon('play')+(state.playing?'Приостановить':state.done?'Показать ещё раз':'Показать движение');$('nav-route-progress').value=Math.round(state.progress*1000);$('nav-route-position').textContent=state.done?'Вы у цели':state.connection&&state.floor!==state.toFloor?`${routePreferences().stepFree?'Лифт':'Лестница'} · ${state.floor} → ${state.toFloor}`:`${state.floor||route?.from.floor||1}-й этаж · ${Math.round(state.progress*100)}%`;if(state.playing||state.done||seekingPreview)setRouteStep(state.step);},onFailure:switchToPlan});graphicsAvailable=true;$('nav-loading').hidden=true;}catch{switchToPlan();}
  updateAll();
  const link=readNavigationLink(new URL(location.href),defaultOrigin);
  const target=link.target??pilotRoomById(link.roomId)?.spaceId??link.spaceId;

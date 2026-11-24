@@ -17,7 +17,7 @@ async function sendEmailPayload(templateParams, statusEl, submitBtn, submitText,
   const config = getEmailJSConfig();
   const hasKeys = Boolean(config.publicKey && config.serviceId && config.templateId);
 
-  if (submitBtn) submitBtn.disabled = true;
+  if (submitBtn) submitBtn.setAttribute('aria-disabled', 'true');
   if (submitText) submitText.textContent = 'Отправляем…';
   if (statusEl) {
     statusEl.hidden = false;
@@ -60,7 +60,7 @@ async function sendEmailPayload(templateParams, statusEl, submitBtn, submitText,
       statusEl.innerHTML = `<strong>Ошибка отправки:</strong> ${escapeHTML(errText)}.<br><small>Текст остался в форме. Попробуйте отправить его позже.</small>`;
     }
   } finally {
-    if (submitBtn) submitBtn.disabled = false;
+    if (submitBtn) submitBtn.removeAttribute('aria-disabled');
     if (submitText) submitText.textContent = originalLabel;
   }
 }
@@ -100,7 +100,8 @@ function bindForm(form) {
       if (message) descriptions.push(error.id);
       if (descriptions.length) input.setAttribute('aria-describedby', descriptions.join(' '));
       else input.removeAttribute('aria-describedby');
-      input.setAttribute('aria-invalid', String(Boolean(message)));
+      if (message) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
       error.textContent = message || '';
       error.hidden = !message;
     };
@@ -119,7 +120,7 @@ function bindForm(form) {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (submitBtn?.disabled) return;
+    if (submitBtn?.disabled || submitBtn?.getAttribute('aria-disabled') === 'true') return;
     if (statusEl) {
       statusEl.hidden = true;
       statusEl.textContent = '';

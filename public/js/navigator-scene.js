@@ -307,13 +307,37 @@ export function createNavigatorScene({container,campus,onSelect,onFloor,onFailur
   }
   if(activeStair)return;
   const occupied=[],isMobile=matchMedia('(max-width:700px)').matches;
+  const placedFloorLabels=[];
   for(const item of floorLabels){
    const p=!focusedRoom&&!isBuilding()&&!view&&floorInView(item.number)&&
     item.boundary.map(point=>project(point,(item.number-1)*floorGap)).reduce((left,current)=>current.x<left.x?current:left);
-   item.button.hidden=!p||Math.abs(p.z)>1||p.y<24||p.y>height-24;
-   if(item.button.hidden)continue;
-   item.button.style.left=Math.max(26,Math.min(width-26,p.x-28))+'px';
-   item.button.style.top=p.y+'px';
+   item.button.hidden=!p||Math.abs(p.z)>1||p.y<20||p.y>height-20;
+   if(!item.button.hidden)placedFloorLabels.push({item,x:p.x,y:p.y});
+  }
+  placedFloorLabels.sort((a,b)=>a.y-b.y);
+  const sampleBadgeHeight=placedFloorLabels[0]?.item.button.offsetHeight||(isMobile?42:48);
+  const minFloorGap=sampleBadgeHeight+4;
+  const minFloorY=Math.ceil(sampleBadgeHeight/2)+4,maxFloorY=height-Math.ceil(sampleBadgeHeight/2)-4;
+  for(let i=1;i<placedFloorLabels.length;i++){
+   if(placedFloorLabels[i].y-placedFloorLabels[i-1].y<minFloorGap){
+    placedFloorLabels[i].y=placedFloorLabels[i-1].y+minFloorGap;
+   }
+  }
+  const lastLabel=placedFloorLabels.at(-1);
+  if(lastLabel&&lastLabel.y>maxFloorY){
+   const shift=lastLabel.y-maxFloorY;
+   for(const entry of placedFloorLabels)entry.y-=shift;
+   if(placedFloorLabels[0].y<minFloorY){
+    placedFloorLabels[0].y=minFloorY;
+    for(let i=1;i<placedFloorLabels.length;i++){
+     placedFloorLabels[i].y=Math.max(placedFloorLabels[i].y,placedFloorLabels[i-1].y+minFloorGap);
+    }
+   }
+  }
+  for(const {item,x,y} of placedFloorLabels){
+   if(y>maxFloorY){item.button.hidden=true;continue;}
+   item.button.style.left=Math.max(26,Math.min(width-26,x-28))+'px';
+   item.button.style.top=y+'px';
   }
   for(const endpoint of routeEndpoints){const p=project(endpoint.position),show=routeGroup?.visible&&!focusedRoom&&(!view||view===endpoint.floor)&&p.z>-1&&p.z<1&&p.x>36&&p.x<width-36&&p.y>35&&p.y<height-30;endpoint.label.hidden=!show;if(show){endpoint.label.style.left=p.x+'px';endpoint.label.style.top=(p.y-12)+'px';}}
   for(const item of (routeGroup?[]:stairLabels).filter(item=>item.main&&item.number===view)){const p=project(item.position);if(p.z>-1&&p.z<1)occupied.push(p);}

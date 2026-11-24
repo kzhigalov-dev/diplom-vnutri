@@ -152,7 +152,7 @@ body:has(.nav-app) {
 .nav-route ol > li::before {display: none;}
 .nav-route li > [data-route-step], .nav-route .nav-route-step {
   display: grid;
-  grid-template-columns: 27px 1fr;
+  grid-template-columns: 27px minmax(0, 1fr);
   align-items: start;
   gap: 9px;
   width: 100%;
@@ -1248,4 +1248,514 @@ body:has(.nav-app) {--elevation: var(--maps-shadow);}
 }
 @media (max-width: 360px) {
   .campus-page .header nav a {padding-inline: .3rem;}
+}
+
+/* Unified tokens, WCAG 2.2 accessibility, responsive reflow, and restrained motion. */
+:root {
+  --campus-field-border: #818a83;
+  --campus-field-border-hover: #5e6760;
+  --campus-focus: var(--campus-accent);
+  --campus-focus-inverse: #ffffff;
+  --campus-motion-fast: 120ms;
+  --campus-motion-medium: 220ms;
+  --campus-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --campus-radius-control: 0.375rem;
+  --campus-radius-panel: 0.625rem;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  text-underline-position: from-font;
+  text-decoration-thickness: from-font;
+}
+
+button {
+  height: auto;
+  white-space: normal;
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+select,
+input,
+textarea {
+  height: auto;
+}
+
+.nav-icon * {
+  vector-effect: non-scaling-stroke;
+}
+
+.nav-icon {
+  stroke-width: 1.75px;
+}
+
+/* Skip link for keyboard navigation on content pages. */
+.skip-link {
+  position: fixed;
+  inset-inline-start: 12px;
+  inset-block-start: 12px;
+  z-index: 120;
+  padding: 10px 14px;
+  border-radius: var(--campus-radius-control);
+  background: var(--campus-accent);
+  color: var(--campus-focus-inverse);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* Consistent visible focus indicators across all pages and components. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible,
+.campus-page :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--campus-focus);
+  outline-offset: 2px;
+}
+
+.nav-search:focus-within {
+  border-color: var(--campus-accent);
+  outline: 2px solid var(--campus-focus);
+  outline-offset: 2px;
+}
+
+.nav-search input:focus-visible {
+  outline: 0;
+}
+
+.nav-map:focus-visible {
+  outline: 3px solid var(--campus-focus);
+  outline-offset: -3px;
+  border-radius: 0;
+}
+
+.nav-result:focus-visible,
+.nav-app :is(.nav-levels, .nav-map-zoom, .nav-plan-pan) button:focus-visible {
+  outline: 2px solid var(--campus-focus);
+  outline-offset: -2px;
+}
+
+.nav-app :is(.nav-levels, .nav-map-zoom) button[aria-pressed="true"]:focus-visible {
+  outline-color: var(--campus-focus-inverse);
+}
+
+/* WCAG 1.4.11 non-text contrast (>= 3:1) for interactive fields and outline controls. */
+.nav-header .nav-search,
+.nav-header nav .nav-menu-toggle,
+.nav-app :is(select, input[type="date"], input[type="number"]),
+.nav-btn:not(.button-primary),
+.campus-page .button:not(.button-primary),
+.contact-label :is(input, select, textarea),
+.feedback-card .contact-label :is(input, select, textarea),
+.campus-page .directory-search input,
+.campus-page :is(input, select, textarea, #schedule-file),
+.nav-modal :is(input, select) {
+  border-color: var(--campus-field-border);
+}
+
+.nav-app :is(input, select, textarea):focus-visible,
+.nav-modal :is(input, select, textarea):focus-visible,
+.campus-page :is(input, select, textarea):focus-visible {
+  border-color: var(--campus-accent);
+}
+
+.campus-page select,
+.nav-app select,
+.nav-modal select {
+  min-block-size: 44px;
+  height: auto;
+  line-height: 1.35;
+  padding-block: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Concentric radii and surface scroll containment. */
+.nav-app .nav-search,
+.nav-app .nav-floor-source,
+.nav-app .nav-btn,
+.nav-app .button,
+.nav-modal .button,
+.campus-page .button,
+.nav-header nav .nav-menu-toggle,
+.nav-app :is(.nav-close, .nav-sidebar-close),
+.nav-modal .nav-modal-close,
+.nav-app .nav-result,
+.nav-app :is(.nav-levels, .nav-map-zoom, .nav-plan-pan) button,
+.nav-app .nav-modes button {
+  border-radius: var(--campus-radius-control);
+}
+
+.nav-app .nav-modes {
+  padding: 3px;
+  border-radius: calc(var(--campus-radius-control) + 3px);
+}
+
+.nav-app :is(.nav-levels, .nav-map-zoom, .nav-plan-pan) {
+  padding: 2px;
+  border-radius: calc(var(--campus-radius-control) + 2px);
+}
+
+.nav-app :is(.nav-sidebar, .nav-detail, .nav-route),
+.nav-project-menu,
+.nav-modal,
+.campus-page :is(.feedback-card, .notice, .schedule-import, .share-box, .orientation-figure) {
+  border-radius: var(--campus-radius-panel);
+}
+
+.nav-sidebar,
+.nav-detail,
+.nav-route,
+.nav-project-menu,
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Typography floor (>= 12px for legible UI chrome) and reading polish. */
+.about-main p,
+.campus-document p,
+.orientation-section > p,
+.nav-note {
+  text-wrap: pretty;
+}
+
+.nav-footer,
+.nav-level-caption,
+.nav-menu-group > strong,
+.nav-room-model-note,
+.nav-map-bottom .nav-floor-source {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.nav-levels button:first-child,
+.nav-levels #nav-all-floors:not([hidden]) {
+  min-inline-size: 62px;
+  font-size: 0.75rem;
+  line-height: 1.1;
+}
+
+.nav-level-label small {
+  font-size: 0.6875rem;
+}
+
+.nav-room-label,
+.nav-stair-label {
+  font-size: 0.75rem;
+}
+
+/* Route steps, search results, and sidebar contact reflow without clipping or scrollbars. */
+.nav-route ol > li {
+  min-width: 0;
+}
+
+.nav-route li button {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nav-route li > [data-route-step],
+.nav-route .nav-route-step {
+  grid-template-columns: 27px minmax(0, 1fr);
+}
+
+.nav-step-copy,
+.nav-step-copy > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nav-route li .nav-stair-button {
+  width: 100%;
+  max-width: 100%;
+  margin-inline-start: 0;
+  padding-inline: 43px 8px;
+}
+
+.nav-result {
+  white-space: normal;
+  text-align: start;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nav-result-main {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nav-result-main :is(strong, small) {
+  overflow-wrap: anywhere;
+}
+
+.nav-sidebar-subtitle {
+  margin: 0 0 10px;
+  color: var(--campus-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.nav-sidebar-contact {
+  padding: 2px 0 6px;
+  gap: 0;
+}
+
+.nav-sidebar-contact .contact-form {
+  margin-top: 4px;
+  gap: 10px;
+}
+
+.nav-sidebar-contact textarea {
+  min-height: 68px;
+}
+
+.nav-project-menu {
+  z-index: 40;
+  padding: 6px;
+}
+
+@media (pointer: fine) {
+  .nav-project-menu a,
+  .nav-project-menu button {
+    min-height: 38px;
+    padding: 7px 10px;
+  }
+}
+
+/* Unified masthead and layout across all supporting pages. */
+.campus-page :is(.header, .booking-header, .top) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  width: 100%;
+  max-width: none;
+  min-height: 64px;
+  margin: 0;
+  padding: 8px clamp(16px, 4vw, 32px);
+  border-bottom: 1px solid var(--campus-line);
+  background: var(--campus-surface);
+  color: var(--campus-ink);
+}
+
+.campus-page :is(.header, .booking-header, .top) :is(.brand, .mini-brand) {
+  display: inline-block;
+  margin: 0;
+  width: auto;
+  font-size: 1.75rem;
+  line-height: 1;
+  text-decoration: none;
+  color: var(--campus-ink);
+}
+
+.campus-page :is(.header, .booking-header, .top) :is(.brand, .mini-brand) small {
+  display: none;
+}
+
+.campus-page :is(.header, .booking-header, .top) nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: clamp(0.35rem, 1.5vw, 1.25rem);
+  max-inline-size: 100%;
+}
+
+.campus-page :is(.header, .booking-header, .top) nav a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding: 0 0.55rem;
+  color: var(--campus-muted);
+  font-size: 0.875rem;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.campus-page :is(.header, .booking-header, .top) nav a[aria-current="page"] {
+  color: var(--campus-ink);
+  border-bottom-color: var(--campus-accent);
+}
+
+.orientation-figure img,
+.orientation-signs img {
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+/* Hover gating: prevent sticky hover highlights on touch devices. */
+@media (hover: hover) {
+  .campus-page :is(.header, .booking-header, .top) nav a:hover {
+    color: var(--campus-ink);
+  }
+  .nav-search:hover {
+    border-color: var(--campus-field-border-hover);
+  }
+}
+
+@media (hover: none) {
+  .nav-header nav :is(.nav-menu-toggle, .nav-main-links a):hover,
+  .nav-modes button:hover:not([aria-pressed="true"]),
+  .nav-levels button:hover:not([aria-pressed="true"]),
+  .nav-map-zoom button:hover:not([aria-pressed="true"]),
+  .nav-plan-pan button:hover,
+  .nav-result:hover:not([aria-pressed="true"]),
+  .nav-close:hover,
+  .nav-sidebar-close:hover {
+    background: transparent;
+    color: inherit;
+  }
+  .nav-btn-primary:hover:not(:disabled, [aria-disabled="true"]),
+  .campus-page .button.button-primary:hover:not(:disabled, [aria-disabled="true"]) {
+    background: var(--campus-accent);
+    border-color: var(--campus-accent);
+  }
+  .campus-page .button:not(.button-primary):hover {
+    background: var(--campus-surface);
+  }
+}
+
+/* Mobile and 320px narrow-width reflow fixes. */
+@media (max-width: 700px) {
+  .nav-app .nav-sidebar {
+    max-height: calc(100dvh - var(--header-height) - var(--footer-height) - 12px);
+    overflow-y: auto;
+  }
+  .nav-levels button:first-child,
+  .nav-levels #nav-all-floors:not([hidden]) {
+    min-inline-size: 0;
+    font-size: 0.6875rem;
+  }
+  .nav-room-label,
+  .nav-stair-label {
+    font-size: 0.6875rem;
+  }
+  .campus-page :is(input, select, textarea, .directory-search input, .share-controls input) {
+    font-size: 16px;
+  }
+  .campus-page :is(.header, .booking-header, .top) nav a {
+    font-size: 0.8125rem;
+    padding-inline: 0.4rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .campus-page :is(.page, .about-main, main) {
+    padding: 24px 16px 56px;
+  }
+  .campus-page .orientation-signs article {
+    grid-template-columns: minmax(64px, 24%) minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+
+/* Tactile press feedback and reduced-motion-safe micro-transitions. */
+.button,
+.nav-btn,
+.nav-levels button,
+.nav-map-zoom button,
+.nav-plan-pan button,
+.nav-menu-toggle {
+  transition: background-color var(--campus-motion-fast) var(--campus-ease-out),
+              color var(--campus-motion-fast) var(--campus-ease-out),
+              border-color var(--campus-motion-fast) var(--campus-ease-out),
+              scale 150ms var(--campus-ease-out);
+}
+
+.nav-result,
+.nav-modes button,
+.nav-project-menu a,
+.nav-project-menu button,
+.nav-close,
+.nav-sidebar-close,
+.nav-modal-close {
+  transition: background-color var(--campus-motion-fast) var(--campus-ease-out),
+              color var(--campus-motion-fast) var(--campus-ease-out),
+              border-color var(--campus-motion-fast) var(--campus-ease-out);
+}
+
+:where(.button, .nav-btn, .nav-levels button, .nav-map-zoom button, .nav-plan-pan button, .nav-menu-toggle):not(:disabled, [aria-disabled="true"]):active {
+  scale: 0.96;
+}
+
+.nav-toast:not([hidden]) {
+  animation: nav-toast-fade 150ms var(--campus-ease-out);
+}
+
+@keyframes nav-toast-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav-toast:not([hidden]) {
+    animation-name: nav-toast-in;
+  }
+  .nav-project-menu:popover-open,
+  dialog.nav-modal[open],
+  .nav-detail:not([hidden]),
+  .nav-route:not([hidden]) {
+    transition: opacity var(--campus-motion-medium) var(--campus-ease-out),
+                transform var(--campus-motion-medium) var(--campus-ease-out);
+  }
+  @starting-style {
+    .nav-project-menu:popover-open,
+    dialog.nav-modal[open],
+    .nav-detail:not([hidden]),
+    .nav-route:not([hidden]) {
+      opacity: 0;
+      transform: translateY(6px) scale(0.98);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-toast:not([hidden]) {
+    animation: nav-toast-fade 150ms var(--campus-ease-out) !important;
+  }
+  .button,
+  .nav-btn,
+  .nav-levels button,
+  .nav-map-zoom button,
+  .nav-plan-pan button,
+  .nav-menu-toggle {
+    transition: scale 150ms var(--campus-ease-out) !important;
+  }
+  .nav-result,
+  .nav-modes button,
+  .nav-project-menu a,
+  .nav-project-menu button,
+  .nav-close,
+  .nav-sidebar-close,
+  .nav-modal-close {
+    transition: none !important;
+  }
 }
